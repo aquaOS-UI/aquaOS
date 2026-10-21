@@ -146,6 +146,7 @@ namespace Aqua {
         ctx->CreateSolidColorBrush(Colors::TextSecondary, &m_brushTextSecondary);
         ctx->CreateSolidColorBrush(Colors::TextMuted, &m_brushTextPlaceholder);
         ctx->CreateSolidColorBrush(Colors::GlassSeparator, &m_brushSeparator);
+        ctx->CreateSolidColorBrush(Colors::AccentBlue, &m_brushChip);
 
         UpdateSearchResults();
 
@@ -360,13 +361,12 @@ namespace Aqua {
                 }
 
                 // Item color chip
-                ComPtr<ID2D1SolidColorBrush> chipBrush;
-                ctx->CreateSolidColorBrush(item.iconColor, &chipBrush);
+                m_brushChip->SetColor(item.iconColor);
                 D2D1_ROUNDED_RECT chipBox = D2D1::RoundedRect(
                     D2D1::RectF(itemRect.left + 12.0f * m_dpiScale, itemY + 11.0f * m_dpiScale, itemRect.left + 38.0f * m_dpiScale, itemY + 37.0f * m_dpiScale),
                     6.0f * m_dpiScale, 6.0f * m_dpiScale
                 );
-                ctx->FillRoundedRectangle(chipBox, chipBrush.Get());
+                ctx->FillRoundedRectangle(chipBox, m_brushChip.Get());
 
                 // Title
                 D2D1_RECT_F titleRect = D2D1::RectF(itemRect.left + 48.0f * m_dpiScale, itemY + 4.0f * m_dpiScale, itemRect.right - 10.0f, itemY + 26.0f * m_dpiScale);

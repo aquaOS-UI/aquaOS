@@ -174,18 +174,21 @@ namespace Aqua {
         hr = engine.GetDCompDevice()->Commit();
         if (FAILED(hr)) return false;
 
-        // Bind Direct2D Bitmap Target
-        ComPtr<IDXGISurface> surface;
-        hr = m_swapChain->GetBuffer(0, IID_PPV_ARGS(&surface));
-        if (FAILED(hr)) return false;
-
+        // Bind Direct2D Bitmap Targets for BOTH back buffers (Buffer 0 and Buffer 1)
         D2D1_BITMAP_PROPERTIES1 bp = D2D1::BitmapProperties1(
             D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW,
             D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED)
         );
 
-        hr = engine.GetD2DContext()->CreateBitmapFromDxgiSurface(surface.Get(), &bp, &m_targetBitmap);
-        return SUCCEEDED(hr);
+        for (UINT i = 0; i < 2; ++i) {
+            ComPtr<IDXGISurface> surface;
+            hr = m_swapChain->GetBuffer(i, IID_PPV_ARGS(&surface));
+            if (SUCCEEDED(hr)) {
+                engine.GetD2DContext()->CreateBitmapFromDxgiSurface(surface.Get(), &bp, &m_targetBitmaps[i]);
+            }
+        }
+
+        return (m_targetBitmaps[0] != nullptr);
     }
 
     bool DCompSurface::Resize(int width, int height) {
@@ -195,8 +198,11 @@ namespace Aqua {
         m_height = (height > 0) ? height : 1;
 
         auto& engine = DCompEngine::Instance();
-        engine.GetD2DContext()->SetTarget(nullptr);
-        m_targetBitmap.Reset();
+        if (auto ctx = engine.GetD2DContext()) {
+            ctx->SetTarget(nullptr);
+        }
+        m_targetBitmaps[0].Reset();
+        m_targetBitmaps[1].Reset();
 
         HRESULT hr = m_swapChain->ResizeBuffers(
             2,
@@ -207,24 +213,27 @@ namespace Aqua {
         );
         if (FAILED(hr)) return false;
 
-        ComPtr<IDXGISurface> surface;
-        hr = m_swapChain->GetBuffer(0, IID_PPV_ARGS(&surface));
-        if (FAILED(hr)) return false;
-
         D2D1_BITMAP_PROPERTIES1 bp = D2D1::BitmapProperties1(
             D2D1_BITMAP_OPTIONS_TARGET | D2D1_BITMAP_OPTIONS_CANNOT_DRAW,
             D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_PREMULTIPLIED)
         );
 
-        hr = engine.GetD2DContext()->CreateBitmapFromDxgiSurface(surface.Get(), &bp, &m_targetBitmap);
-        return SUCCEEDED(hr);
+        for (UINT i = 0; i < 2; ++i) {
+            ComPtr<IDXGISurface> surface;
+            hr = m_swapChain->GetBuffer(i, IID_PPV_ARGS(&surface));
+            if (SUCCEEDED(hr)) {
+                engine.GetD2DContext()->CreateBitmapFromDxgiSurface(surface.Get(), &bp, &m_targetBitmaps[i]);
+            }
+        }
+        return (m_targetBitmaps[0] != nullptr);
     }
 
     void DCompSurface::Destroy() {
         if (auto ctx = DCompEngine::Instance().GetD2DContext()) {
             ctx->SetTarget(nullptr);
         }
-        m_targetBitmap.Reset();
+        m_targetBitmaps[0].Reset();
+        m_targetBitmaps[1].Reset();
         m_dcompVisual.Reset();
         m_dcompTarget.Reset();
         m_swapChain.Reset();
@@ -232,24 +241,51 @@ namespace Aqua {
     }
 
     ID2D1DeviceContext* DCompSurface::BeginDraw() {
-        if (!m_targetBitmap) return nullptr;
+        auto& engine = DCompEngine::Instance();
+        auto ctx = engine.GetD2DContext();
+        if (!ctx || !m_swapChain) return nullptr;
 
-        auto ctx = DCompEngine::Instance().GetD2DContext();
-        ctx->SetTarget(m_targetBitmap.Get());
+        UINT backBufferIndex = 0;
+        ComPtr<IDXGISwapChain3> sc3;
+        if (SUCCEEDED(m_swapChain.As(&sc3))) {
+            backBufferIndex = sc3->GetCurrentBackBufferIndex();
+        }
+
+        ID2D1Bitmap1* target = nullptr;
+        if (backBufferIndex < 2 && m_targetBitmaps[backBufferIndex]) {
+            target = m_targetBitmaps[backBufferIndex].Get();
+        } else if (m_targetBitmaps[0]) {
+            target = m_targetBitmaps[0].Get();
+        }
+
+        if (!target) return nullptr;
+
+        ctx->SetTarget(target);
         ctx->BeginDraw();
-        // Fully clear to transparent so non-drawn areas are see-through
         ctx->Clear(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.0f));
         return ctx;
     }
 
     void DCompSurface::EndDraw() {
-        auto ctx = DCompEngine::Instance().GetD2DContext();
+        auto& engine = DCompEngine::Instance();
+        auto ctx = engine.GetD2DContext();
+        if (!ctx) return;
+
         HRESULT hr = ctx->EndDraw();
+        // CRITICAL: Unbind render target before calling Present to prevent GPU race condition
         ctx->SetTarget(nullptr);
 
         if (SUCCEEDED(hr) && m_swapChain) {
-            m_swapChain->Present(1, 0); // 1 = VSync on
-            DCompEngine::Instance().GetDCompDevice()->Commit();
+            HRESULT presentHr = m_swapChain->Present(1, 0);
+            if (SUCCEEDED(presentHr)) {
+                if (auto dcomp = engine.GetDCompDevice()) {
+                    dcomp->Commit();
+                }
+            } else if (presentHr == DXGI_ERROR_DEVICE_REMOVED || presentHr == DXGI_ERROR_DEVICE_RESET) {
+                // Recover from device loss
+                engine.Shutdown();
+                engine.Initialize();
+            }
         }
     }
 

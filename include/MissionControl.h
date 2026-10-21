@@ -70,6 +70,7 @@ namespace Aqua {
         ComPtr<ID2D1SolidColorBrush> m_brushCardBgHover;
         ComPtr<ID2D1SolidColorBrush> m_brushAccent;
         ComPtr<ID2D1SolidColorBrush> m_brushCloseBtn;
+        ComPtr<ID2D1SolidColorBrush> m_brushBtnIdle;
     };
 
 }

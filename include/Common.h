@@ -33,6 +33,13 @@
 #include <functional>
 #include <algorithm>
 
+#ifndef WINEVENT_OUTOFPROCESS
+#define WINEVENT_OUTOFPROCESS 0x0000
+#endif
+#ifndef WINEVENT_SKIPOWNPROCESS
+#define WINEVENT_SKIPOWNPROCESS 0x0002
+#endif
+
 using Microsoft::WRL::ComPtr;
 
 namespace Aqua {

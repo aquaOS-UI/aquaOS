@@ -13,6 +13,7 @@ namespace Aqua {
 
         ID3D11Device* GetD3DDevice() const { return m_d3dDevice.Get(); }
         ID2D1DeviceContext* GetD2DContext() const { return m_d2dContext.Get(); }
+        ID2D1Factory2* GetD2DFactory() const { return m_d2dFactory.Get(); }
         IDWriteFactory* GetDWriteFactory() const { return m_dwriteFactory.Get(); }
         IDCompositionDevice* GetDCompDevice() const { return m_dcompDevice.Get(); }
         IDXGIFactory2* GetDXGIFactory() const { return m_dxgiFactory.Get(); }
@@ -55,7 +56,7 @@ namespace Aqua {
         int m_height = 0;
 
         ComPtr<IDXGISwapChain1> m_swapChain;
-        ComPtr<ID2D1Bitmap1> m_targetBitmap;
+        ComPtr<ID2D1Bitmap1> m_targetBitmaps[2];
         ComPtr<IDCompositionTarget> m_dcompTarget;
         ComPtr<IDCompositionVisual> m_dcompVisual;
     };

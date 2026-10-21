@@ -67,6 +67,7 @@ namespace Aqua {
         ComPtr<ID2D1SolidColorBrush> m_brushTextSecondary;
         ComPtr<ID2D1SolidColorBrush> m_brushTextPlaceholder;
         ComPtr<ID2D1SolidColorBrush> m_brushSeparator;
+        ComPtr<ID2D1SolidColorBrush> m_brushChip;
     };
 
 }

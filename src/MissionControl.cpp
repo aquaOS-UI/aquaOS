@@ -118,6 +118,7 @@ namespace Aqua {
         ctx->CreateSolidColorBrush(D2D1::ColorF(0.18f, 0.18f, 0.23f, 0.95f), &m_brushCardBgHover);
         ctx->CreateSolidColorBrush(Colors::AccentBlue, &m_brushAccent);
         ctx->CreateSolidColorBrush(D2D1::ColorF(1.0f, 0.28f, 0.25f, 0.95f), &m_brushCloseBtn);
+        ctx->CreateSolidColorBrush(D2D1::ColorF(0.50f, 0.50f, 0.55f, 0.70f), &m_brushBtnIdle);
 
         return true;
     }
@@ -490,11 +491,9 @@ namespace Aqua {
                     ctx->DrawBitmap(card.icon.Get(), D2D1::RectF(iconX, iconY, iconX + iconSize, iconY + iconSize));
                 } else {
                     // Fallback small colored dot
-                    ComPtr<ID2D1SolidColorBrush> dotBrush;
-                    ctx->CreateSolidColorBrush(Colors::AccentBlue, &dotBrush);
                     ctx->FillEllipse(
                         D2D1::Ellipse(D2D1::Point2F(iconX + iconSize * 0.5f, iconY + iconSize * 0.5f), iconSize * 0.4f, iconSize * 0.4f),
-                        dotBrush.Get()
+                        m_brushAccent.Get()
                     );
                 }
 
@@ -530,9 +529,7 @@ namespace Aqua {
                             m_brushTextPrimary.Get(), 1.5f * m_dpiScale
                         );
                     } else {
-                        ComPtr<ID2D1SolidColorBrush> btnIdleBrush;
-                        ctx->CreateSolidColorBrush(D2D1::ColorF(0.50f, 0.50f, 0.55f, 0.70f), &btnIdleBrush);
-                        ctx->FillEllipse(D2D1::Ellipse(btnCenter, btnR, btnR), btnIdleBrush.Get());
+                        ctx->FillEllipse(D2D1::Ellipse(btnCenter, btnR, btnR), m_brushBtnIdle.Get());
                     }
                 }
 

@@ -55,9 +55,13 @@ namespace Aqua {
 
         void SetSpotlightCallback(std::function<void()> callback) { m_onSpotlight = callback; }
         void SetMissionControlCallback(std::function<void()> callback) { m_onMissionControl = callback; }
+        void SetLaunchpadCallback(std::function<void()> callback) { m_onLaunchpad = callback; }
 
         void UpdatePhysics();
         void Render();
+
+        std::vector<HWND> GetWindowsForItem(const DockItem& item);
+        void UpdateRunningStates();
 
         void PinApplication(const std::wstring& filePath);
         void RemoveItem(int index);
@@ -74,6 +78,8 @@ namespace Aqua {
         void ShowContextMenu(int itemIndex, int screenX, int screenY);
 
         HWND m_hwnd = nullptr;
+        HWND m_lastActiveAppHwnd = nullptr;
+        int m_stateUpdateFrame = 0;
         DCompSurface m_surface;
 
         int m_screenWidth = 0;
@@ -90,6 +96,8 @@ namespace Aqua {
         float m_iconSpacing = 10.0f;
 
         bool m_isHovered = false;
+        bool m_needsRedraw = true;
+        int m_topmostTicks = 0;
         float m_mouseWindowX = -999.0f;
         float m_mouseWindowY = -999.0f;
         int m_hoveredIndex = -1;
@@ -97,6 +105,7 @@ namespace Aqua {
         std::vector<DockItem> m_items;
         std::function<void()> m_onSpotlight;
         std::function<void()> m_onMissionControl;
+        std::function<void()> m_onLaunchpad;
 
         // DirectWrite Formats
         ComPtr<IDWriteTextFormat> m_tooltipFormat;
@@ -108,6 +117,17 @@ namespace Aqua {
         ComPtr<ID2D1SolidColorBrush> m_brushTextPrimary;
         ComPtr<ID2D1SolidColorBrush> m_brushDot;
         ComPtr<ID2D1SolidColorBrush> m_brushSeparator;
+
+        // Persistent Icon Palette Brushes (zero allocations per frame)
+        ComPtr<ID2D1SolidColorBrush> m_brushAccentBlue;
+        ComPtr<ID2D1SolidColorBrush> m_brushFinderDarkBlue;
+        ComPtr<ID2D1SolidColorBrush> m_brushAccentRed;
+        ComPtr<ID2D1SolidColorBrush> m_brushAccentOrange;
+        ComPtr<ID2D1SolidColorBrush> m_brushAccentGreen;
+        ComPtr<ID2D1SolidColorBrush> m_brushAccentPurple;
+        ComPtr<ID2D1SolidColorBrush> m_brushDarkTile;
+        ComPtr<ID2D1SolidColorBrush> m_brushLightGray;
+        ComPtr<ID2D1SolidColorBrush> m_brushGearDark;
     };
 
 }

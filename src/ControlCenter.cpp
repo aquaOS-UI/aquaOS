@@ -1,5 +1,6 @@
 #include "ControlCenter.h"
 #include "SystemInfo.h"
+#include "ThemeManager.h"
 #include <algorithm>
 
 namespace Aqua {
@@ -122,6 +123,7 @@ namespace Aqua {
         ctx->CreateSolidColorBrush(Colors::TextPrimary, &m_brushTextPrimary);
         ctx->CreateSolidColorBrush(Colors::TextSecondary, &m_brushTextSecondary);
         ctx->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.95f), &m_brushSliderFill);
+        ctx->CreateSolidColorBrush(D2D1::ColorF(0.1f, 0.1f, 0.1f, 1.0f), &m_brushSliderTextDark);
 
         // Precompute Layout
         float pad = 12.0f * m_dpiScale;
@@ -234,9 +236,8 @@ namespace Aqua {
 
             // Slider Label
             D2D1_RECT_F lblRect = D2D1::RectF(rect.left + 16.0f * m_dpiScale, rect.top, rect.right - 16.0f * m_dpiScale, rect.bottom);
-            ComPtr<ID2D1SolidColorBrush> textBrush;
-            ctx->CreateSolidColorBrush((value > 0.45f) ? D2D1::ColorF(0.1f, 0.1f, 0.1f, 1.0f) : Colors::TextPrimary, &textBrush);
-            ctx->DrawTextW(label.c_str(), static_cast<UINT32>(label.length()), m_formatTitle.Get(), lblRect, textBrush.Get());
+            ID2D1SolidColorBrush* textBrush = (value > 0.45f) ? m_brushSliderTextDark.Get() : m_brushTextPrimary.Get();
+            ctx->DrawTextW(label.c_str(), static_cast<UINT32>(label.length()), m_formatTitle.Get(), lblRect, textBrush);
         };
 
         // Draw Sliders
@@ -305,7 +306,8 @@ namespace Aqua {
 
             // Dark mode click
             if (mx >= m_darkRect.left && mx <= m_darkRect.right && my >= m_darkRect.top && my <= m_darkRect.bottom) {
-                m_darkModeEnabled = !m_darkModeEnabled;
+                ThemeManager::Instance().ToggleTheme();
+                m_darkModeEnabled = ThemeManager::Instance().IsDarkMode();
                 Render();
                 return 0;
             }

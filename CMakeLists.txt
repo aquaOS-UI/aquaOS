@@ -16,6 +16,13 @@ set(SOURCES
     src/TaskbarController.cpp
     src/IconManager.cpp
     src/MissionControl.cpp
+    src/Launchpad.cpp
+    src/NotificationCenter.cpp
+    src/StageManager.cpp
+    src/WindowTiler.cpp
+    src/QuickLook.cpp
+    src/ThemeManager.cpp
+    src/LockScreen.cpp
 )
 
 set(HEADERS
@@ -29,6 +36,13 @@ set(HEADERS
     include/TaskbarController.h
     include/IconManager.h
     include/MissionControl.h
+    include/Launchpad.h
+    include/NotificationCenter.h
+    include/StageManager.h
+    include/WindowTiler.h
+    include/QuickLook.h
+    include/ThemeManager.h
+    include/LockScreen.h
 )
 
 add_executable(AquaShell WIN32 ${SOURCES} ${HEADERS})
@@ -44,6 +58,9 @@ target_link_libraries(AquaShell PRIVATE
     gdi32
     shell32
     ole32
+    oleaut32
+    shlwapi
+    windowscodecs
     uuid
     powrprof
     comctl32
