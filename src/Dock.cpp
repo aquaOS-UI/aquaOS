@@ -46,11 +46,18 @@ namespace Aqua {
                 sCls == L"Shell_TrayWnd" || sCls == L"Shell_SecondaryTrayWnd");
     }
 
-    static void ForceForegroundWindow(HWND hwnd) {
+    static void MinimizeWindow(HWND hwnd) {
+        if (!hwnd || !IsWindow(hwnd)) return;
+        ShowWindow(hwnd, SW_MINIMIZE);
+        PostMessageW(hwnd, WM_SYSCOMMAND, SC_MINIMIZE, 0);
+    }
+
+    static void RestoreAndActivateWindow(HWND hwnd) {
         if (!hwnd || !IsWindow(hwnd)) return;
 
         if (IsIconic(hwnd)) {
             ShowWindow(hwnd, SW_RESTORE);
+            PostMessageW(hwnd, WM_SYSCOMMAND, SC_RESTORE, 0);
         } else {
             ShowWindow(hwnd, SW_SHOW);
         }
@@ -58,12 +65,15 @@ namespace Aqua {
         HWND fg = GetForegroundWindow();
         DWORD foreThread = fg ? GetWindowThreadProcessId(fg, nullptr) : 0;
         DWORD appThread = GetCurrentThreadId();
+        DWORD targetThread = GetWindowThreadProcessId(hwnd, nullptr);
 
-        if (foreThread != 0 && foreThread != appThread) {
-            AttachThreadInput(foreThread, appThread, TRUE);
+        if (foreThread != 0 && foreThread != targetThread) {
+            AttachThreadInput(foreThread, targetThread, TRUE);
+            AttachThreadInput(appThread, targetThread, TRUE);
             BringWindowToTop(hwnd);
             SetForegroundWindow(hwnd);
-            AttachThreadInput(foreThread, appThread, FALSE);
+            AttachThreadInput(appThread, targetThread, FALSE);
+            AttachThreadInput(foreThread, targetThread, FALSE);
         } else {
             BringWindowToTop(hwnd);
             SetForegroundWindow(hwnd);
@@ -198,8 +208,14 @@ namespace Aqua {
 
         // Unpinned dynamic apps match directly by unique appKey
         if (!item.isPinned && !item.appKey.empty()) {
-            std::wstring currentKey = !w.processPath.empty() ? ToLower(w.processPath) : (!w.processExe.empty() ? ToLower(w.processExe) : ToLower(w.title));
-            return currentKey == item.appKey;
+            std::wstring pKey = !w.processPath.empty() ? ToLower(w.processPath) : L"";
+            std::wstring eKey = !w.processExe.empty() ? ToLower(w.processExe) : L"";
+            std::wstring tKey = ToLower(w.title);
+
+            if (!pKey.empty() && pKey == item.appKey) return true;
+            if (!eKey.empty() && (eKey == item.appKey || item.appKey.find(eKey) != std::wstring::npos)) return true;
+            if (tKey == item.appKey) return true;
+            return false;
         }
 
         std::wstring lowerTitle = ToLower(w.title);
@@ -1162,51 +1178,67 @@ namespace Aqua {
                     auto hwnds = GetWindowsForItem(item);
                     if (!hwnds.empty()) {
                         HWND fg = GetForegroundWindow();
-                        HWND rootFg = fg ? GetAncestor(fg, GA_ROOTOWNER) : nullptr;
-                        if (!rootFg) rootFg = fg;
-                        if (rootFg == m_hwnd || IsAquaWindow(rootFg)) {
-                            rootFg = m_lastActiveAppHwnd;
+                        HWND activeWnd = fg;
+                        if (!activeWnd || activeWnd == m_hwnd || IsAquaWindow(activeWnd)) {
+                            activeWnd = m_lastActiveAppHwnd;
                         }
 
-                        // Check if the current foreground window belongs to this app
-                        bool isForeground = false;
-                        HWND targetFg = nullptr;
-                        for (HWND h : hwnds) {
-                            if (h == fg || h == rootFg) {
-                                isForeground = true;
-                                targetFg = h;
-                                break;
+                        // Determine if any window of this app is currently frontmost and active
+                        bool isAppActive = false;
+                        HWND activeMatchedHwnd = nullptr;
+
+                        if (activeWnd && IsWindow(activeWnd)) {
+                            HWND rootActive = GetAncestor(activeWnd, GA_ROOT);
+                            if (!rootActive) rootActive = activeWnd;
+                            HWND rootOwner = GetAncestor(activeWnd, GA_ROOTOWNER);
+                            if (!rootOwner) rootOwner = rootActive;
+
+                            DWORD activePid = 0;
+                            GetWindowThreadProcessId(activeWnd, &activePid);
+
+                            for (HWND h : hwnds) {
+                                if (h == activeWnd || h == rootActive || h == rootOwner) {
+                                    isAppActive = true;
+                                    activeMatchedHwnd = h;
+                                    break;
+                                }
+                                DWORD hPid = 0;
+                                GetWindowThreadProcessId(h, &hPid);
+                                if (activePid != 0 && hPid == activePid) {
+                                    isAppActive = true;
+                                    activeMatchedHwnd = h;
+                                    break;
+                                }
                             }
                         }
 
-                        if (isForeground && targetFg) {
-                            if (hwnds.size() > 1) {
-                                // Cycle to the next window of this app
-                                size_t currentIdx = 0;
-                                for (size_t wi = 0; wi < hwnds.size(); ++wi) {
-                                    if (hwnds[wi] == targetFg) {
-                                        currentIdx = wi;
-                                        break;
-                                    }
+                        // If the matched active window is iconic, it's not active
+                        if (isAppActive && activeMatchedHwnd && IsIconic(activeMatchedHwnd)) {
+                            isAppActive = false;
+                        }
+
+                        if (isAppActive) {
+                            // Active app clicked -> Minimize its visible window(s)!
+                            for (HWND h : hwnds) {
+                                if (IsWindow(h) && !IsIconic(h)) {
+                                    MinimizeWindow(h);
                                 }
-                                size_t nextIdx = (currentIdx + 1) % hwnds.size();
-                                HWND nextWnd = hwnds[nextIdx];
-                                ForceForegroundWindow(nextWnd);
-                                m_lastActiveAppHwnd = nextWnd;
-                                return 0;
-                            } else {
-                                // Single window active -> Minimize it!
-                                ShowWindow(targetFg, SW_MINIMIZE);
-                                if (m_lastActiveAppHwnd == targetFg) {
-                                    m_lastActiveAppHwnd = nullptr;
-                                }
-                                return 0;
                             }
+                            if (m_lastActiveAppHwnd == activeMatchedHwnd) {
+                                m_lastActiveAppHwnd = nullptr;
+                            }
+                            return 0;
                         } else {
                             // Inactive or minimized app clicked -> Restore and bring to front!
-                            HWND target = hwnds[0];
-                            ForceForegroundWindow(target);
-                            m_lastActiveAppHwnd = target;
+                            for (auto it = hwnds.rbegin(); it != hwnds.rend(); ++it) {
+                                if (IsWindow(*it) && IsIconic(*it)) {
+                                    ShowWindow(*it, SW_RESTORE);
+                                    PostMessageW(*it, WM_SYSCOMMAND, SC_RESTORE, 0);
+                                }
+                            }
+                            HWND primary = hwnds[0];
+                            RestoreAndActivateWindow(primary);
+                            m_lastActiveAppHwnd = primary;
                             return 0;
                         }
                     }
@@ -1387,6 +1419,20 @@ namespace Aqua {
                 AppendMenuW(hMenu, MF_STRING, 5004, (L"Minimize " + pItem->name).c_str());
                 AppendMenuW(hMenu, MF_STRING, 5005, (L"New Window (" + pItem->name + L")").c_str());
                 AppendMenuW(hMenu, MF_STRING, 5006, (L"Close " + pItem->name).c_str());
+
+                // If multiple windows exist, list individual window titles
+                if (runningHwnds.size() > 1) {
+                    AppendMenuW(hMenu, MF_SEPARATOR, 0, nullptr);
+                    for (size_t wi = 0; wi < runningHwnds.size() && wi < 10; ++wi) {
+                        wchar_t wTitle[256] = {};
+                        GetWindowTextW(runningHwnds[wi], wTitle, 256);
+                        std::wstring displayTitle = (wcslen(wTitle) > 0) ? wTitle : (pItem->name + L" (Window " + std::to_wstring(wi + 1) + L")");
+                        if (displayTitle.length() > 40) {
+                            displayTitle = displayTitle.substr(0, 37) + L"...";
+                        }
+                        AppendMenuW(hMenu, MF_STRING, 6000 + wi, displayTitle.c_str());
+                    }
+                }
             } else {
                 AppendMenuW(hMenu, MF_STRING, 5001, (L"Open " + pItem->name).c_str());
             }
@@ -1412,14 +1458,26 @@ namespace Aqua {
         int cmd = TrackPopupMenu(hMenu, TPM_LEFTALIGN | TPM_TOPALIGN | TPM_RETURNCMD, screenX, screenY, 0, m_hwnd, nullptr);
         DestroyMenu(hMenu);
 
-        if (cmd == 5001 && pItem) {
+        if (cmd >= 6000 && cmd < 6010 && pItem) {
+            size_t wIdx = cmd - 6000;
+            if (wIdx < runningHwnds.size()) {
+                RestoreAndActivateWindow(runningHwnds[wIdx]);
+                m_lastActiveAppHwnd = runningHwnds[wIdx];
+            }
+        } else if (cmd == 5001 && pItem) {
             if (pItem->type == DockAppType::Launchpad) {
                 if (m_onLaunchpad) m_onLaunchpad();
                 else if (m_onMissionControl) m_onMissionControl();
                 else if (m_onSpotlight) m_onSpotlight();
             } else {
                 if (!runningHwnds.empty()) {
-                    ForceForegroundWindow(runningHwnds[0]);
+                    for (auto it = runningHwnds.rbegin(); it != runningHwnds.rend(); ++it) {
+                        if (IsWindow(*it) && IsIconic(*it)) {
+                            ShowWindow(*it, SW_RESTORE);
+                            PostMessageW(*it, WM_SYSCOMMAND, SC_RESTORE, 0);
+                        }
+                    }
+                    RestoreAndActivateWindow(runningHwnds[0]);
                     m_lastActiveAppHwnd = runningHwnds[0];
                 } else if (!pItem->executePath.empty()) {
                     ShellExecuteW(nullptr, L"open", pItem->executePath.c_str(), pItem->executeArgs.empty() ? nullptr : pItem->executeArgs.c_str(), nullptr, SW_SHOWNORMAL);
@@ -1427,7 +1485,7 @@ namespace Aqua {
             }
         } else if (cmd == 5004 && pItem) {
             for (HWND h : runningHwnds) {
-                ShowWindow(h, SW_MINIMIZE);
+                MinimizeWindow(h);
             }
             if (m_lastActiveAppHwnd && std::find(runningHwnds.begin(), runningHwnds.end(), m_lastActiveAppHwnd) != runningHwnds.end()) {
                 m_lastActiveAppHwnd = nullptr;
