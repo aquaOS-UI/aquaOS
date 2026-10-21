@@ -1,18 +1,11 @@
 #pragma once
 #include "Common.h"
 #include "DCompRenderer.h"
+#include "AppCatalogService.h"
 #include <string>
 #include <vector>
 
 namespace Aqua {
-
-    struct SearchResult {
-        std::wstring title;
-        std::wstring subtitle;
-        std::wstring execPath;
-        std::wstring execArgs;
-        D2D1_COLOR_F iconColor;
-    };
 
     class Spotlight {
     public:
@@ -33,23 +26,24 @@ namespace Aqua {
         LRESULT HandleMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
         void UpdateSearchResults();
-        void ExecuteSelected();
+        void ExecuteSelected(bool revealInExplorer = false);
+        void CopyToClipboard(const std::wstring& text);
 
         HWND m_hwnd = nullptr;
         DCompSurface m_surface;
 
         int m_screenWidth = 0;
         int m_screenHeight = 0;
-        int m_width = 640;
+        int m_width = 680;
         int m_height = 56;
         int m_baseHeight = 56;
-        int m_maxHeight = 320;
+        int m_maxHeight = 440;
         float m_dpiScale = 1.0f;
         bool m_visible = false;
 
         std::wstring m_query;
         int m_selectedIndex = 0;
-        std::vector<SearchResult> m_results;
+        std::vector<CatalogItem> m_results;
 
         // Cursor blink
         bool m_showCursor = true;
@@ -58,6 +52,7 @@ namespace Aqua {
         ComPtr<IDWriteTextFormat> m_queryFormat;
         ComPtr<IDWriteTextFormat> m_resultTitleFormat;
         ComPtr<IDWriteTextFormat> m_resultSubFormat;
+        ComPtr<IDWriteTextFormat> m_badgeFormat;
 
         // Direct2D Brushes
         ComPtr<ID2D1SolidColorBrush> m_brushBg;
@@ -68,7 +63,7 @@ namespace Aqua {
         ComPtr<ID2D1SolidColorBrush> m_brushTextPlaceholder;
         ComPtr<ID2D1SolidColorBrush> m_brushSeparator;
         ComPtr<ID2D1SolidColorBrush> m_brushChip;
+        ComPtr<ID2D1SolidColorBrush> m_brushBadgeBg;
     };
 
 }
-

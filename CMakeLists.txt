@@ -61,12 +61,14 @@ set(SERVICES_SOURCES
     src/services/WindowTiler.cpp
     src/services/StageManager.cpp
     src/services/QuickLook.cpp
+    src/services/AppCatalogService.cpp
 )
 
 set(SERVICES_HEADERS
     include/services/WindowTiler.h
     include/services/StageManager.h
     include/services/QuickLook.h
+    include/services/AppCatalogService.h
 )
 
 set(APP_SOURCES

@@ -1,6 +1,7 @@
 #define NOMINMAX
 #include "Launchpad.h"
 #include "IconManager.h"
+#include "AppCatalogService.h"
 #include <shlobj.h>
 #include <filesystem>
 #include <algorithm>
@@ -158,100 +159,16 @@ namespace Aqua {
         return true;
     }
 
-    static void ScanDirectoryForShortcuts(const fs::path& dir, std::vector<LaunchpadApp>& apps) {
-        std::error_code ec;
-        for (const auto& entry : fs::recursive_directory_iterator(dir, fs::directory_options::skip_permission_denied, ec)) {
-            if (ec) continue;
-            if (entry.is_regular_file()) {
-                auto ext = entry.path().extension().wstring();
-                std::transform(ext.begin(), ext.end(), ext.begin(), ::towlower);
-                if (ext == L".lnk") {
-                    std::wstring filename = entry.path().stem().wstring();
-                    std::wstring lower = filename;
-                    std::transform(lower.begin(), lower.end(), lower.begin(), ::towlower);
-
-                    // Filter out non-app entries
-                    if (lower.find(L"uninstall") != std::wstring::npos ||
-                        lower.find(L"remove") != std::wstring::npos ||
-                        lower.find(L"setup") != std::wstring::npos ||
-                        lower.find(L"readme") != std::wstring::npos ||
-                        lower.find(L"help") != std::wstring::npos ||
-                        lower.find(L"documentation") != std::wstring::npos ||
-                        lower.find(L"manual") != std::wstring::npos ||
-                        lower.find(L"license") != std::wstring::npos) {
-                        continue;
-                    }
-
-                    // Deduplicate
-                    bool exists = false;
-                    for (const auto& app : apps) {
-                        if (_wcsicmp(app.name.c_str(), filename.c_str()) == 0) {
-                            exists = true;
-                            break;
-                        }
-                    }
-
-                    if (!exists) {
-                        LaunchpadApp item;
-                        item.name = filename;
-                        item.path = entry.path().wstring();
-                        apps.push_back(item);
-                    }
-                }
-            }
-        }
-    }
-
     void Launchpad::ScanInstalledApplications() {
         m_allApps.clear();
 
-        // 1. Common ProgramData Start Menu
-        wchar_t commonPath[MAX_PATH] = {};
-        if (SHGetFolderPathW(nullptr, CSIDL_COMMON_PROGRAMS, nullptr, 0, commonPath) == S_OK) {
-            ScanDirectoryForShortcuts(commonPath, m_allApps);
+        auto catalogApps = AppCatalogService::Instance().GetAllApplications();
+        for (const auto& catItem : catalogApps) {
+            LaunchpadApp item;
+            item.name = catItem.name;
+            item.path = catItem.execPath.empty() ? catItem.iconPath : catItem.execPath;
+            m_allApps.push_back(item);
         }
-
-        // 2. User AppData Start Menu
-        wchar_t userPath[MAX_PATH] = {};
-        if (SHGetFolderPathW(nullptr, CSIDL_PROGRAMS, nullptr, 0, userPath) == S_OK) {
-            ScanDirectoryForShortcuts(userPath, m_allApps);
-        }
-
-        // 3. Essential Windows Utilities fallback (if not already included)
-        struct SysTool { const wchar_t* name; const wchar_t* exec; };
-        SysTool sysTools[] = {
-            { L"Terminal", L"wt.exe" },
-            { L"Command Prompt", L"cmd.exe" },
-            { L"PowerShell", L"powershell.exe" },
-            { L"File Explorer", L"explorer.exe" },
-            { L"Task Manager", L"taskmgr.exe" },
-            { L"Settings", L"ms-settings:" },
-            { L"Calculator", L"calc.exe" },
-            { L"Notepad", L"notepad.exe" },
-            { L"Paint", L"mspaint.exe" },
-            { L"Microsoft Edge", L"C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe" }
-        };
-
-        for (const auto& tool : sysTools) {
-            bool found = false;
-            for (const auto& app : m_allApps) {
-                if (_wcsicmp(app.name.c_str(), tool.name) == 0) {
-                    found = true;
-                    break;
-                }
-            }
-            if (!found) {
-                LaunchpadApp item;
-                item.name = tool.name;
-                item.path = tool.exec;
-                m_allApps.push_back(item);
-            }
-        }
-
-        // Sort alphabetically
-        std::sort(m_allApps.begin(), m_allApps.end(), [](const LaunchpadApp& a, const LaunchpadApp& b) {
-            return _wcsicmp(a.name.c_str(), b.name.c_str()) < 0;
-        });
     }
 
     void Launchpad::UpdateFilter() {
@@ -338,6 +255,10 @@ namespace Aqua {
         m_searchQuery.clear();
         m_currentPage = 0;
         m_hoveredIndex = -1;
+
+        if (m_allApps.empty()) {
+            ScanInstalledApplications();
+        }
 
         // Cover active monitor under cursor
         POINT pt;

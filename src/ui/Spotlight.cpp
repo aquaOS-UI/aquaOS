@@ -1,13 +1,14 @@
+#define NOMINMAX
 #include "Spotlight.h"
+#include "IconManager.h"
 #include <algorithm>
-#include <sstream>
+#include <shlwapi.h>
 
 namespace Aqua {
 
     const wchar_t SPOTLIGHT_CLASS_NAME[] = L"AquaSpotlightWindow";
 
-    Spotlight::Spotlight() {
-    }
+    Spotlight::Spotlight() = default;
 
     Spotlight::~Spotlight() {
         if (m_hwnd) {
@@ -20,8 +21,8 @@ namespace Aqua {
         m_screenWidth = screenWidth;
         m_screenHeight = screenHeight;
 
-        m_width = 640;
-        m_baseHeight = 56;
+        m_width = 680;
+        m_baseHeight = 58;
         m_height = m_baseHeight;
 
         int posX = (m_screenWidth - m_width) / 2;
@@ -46,8 +47,8 @@ namespace Aqua {
         if (!m_hwnd) return false;
 
         m_dpiScale = GetDpiScale(m_hwnd);
-        m_width = static_cast<int>(640 * m_dpiScale);
-        m_baseHeight = static_cast<int>(56 * m_dpiScale);
+        m_width = static_cast<int>(680 * m_dpiScale);
+        m_baseHeight = static_cast<int>(58 * m_dpiScale);
         m_height = m_baseHeight;
 
         if (!m_surface.Create(m_hwnd, m_width, m_height)) {
@@ -58,14 +59,14 @@ namespace Aqua {
         auto dwrite = engine.GetDWriteFactory();
         auto ctx = engine.GetD2DContext();
 
-        // DirectWrite Formats
+        // 1. DirectWrite Formats
         dwrite->CreateTextFormat(
             L"Segoe UI Variable Display",
             nullptr,
             DWRITE_FONT_WEIGHT_NORMAL,
             DWRITE_FONT_STYLE_NORMAL,
             DWRITE_FONT_STRETCH_NORMAL,
-            18.0f * m_dpiScale,
+            19.0f * m_dpiScale,
             L"en-US",
             &m_queryFormat
         );
@@ -76,7 +77,7 @@ namespace Aqua {
                 DWRITE_FONT_WEIGHT_NORMAL,
                 DWRITE_FONT_STYLE_NORMAL,
                 DWRITE_FONT_STRETCH_NORMAL,
-                18.0f * m_dpiScale,
+                19.0f * m_dpiScale,
                 L"en-US",
                 &m_queryFormat
             );
@@ -128,17 +129,34 @@ namespace Aqua {
             );
         }
 
+        dwrite->CreateTextFormat(
+            L"Segoe UI Variable Display",
+            nullptr,
+            DWRITE_FONT_WEIGHT_MEDIUM,
+            DWRITE_FONT_STYLE_NORMAL,
+            DWRITE_FONT_STRETCH_NORMAL,
+            10.0f * m_dpiScale,
+            L"en-US",
+            &m_badgeFormat
+        );
+        if (m_badgeFormat) {
+            m_badgeFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
+            m_badgeFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+        }
+
         if (m_queryFormat) {
             m_queryFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
         }
         if (m_resultTitleFormat) {
             m_resultTitleFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+            m_resultTitleFormat->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
         }
         if (m_resultSubFormat) {
             m_resultSubFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+            m_resultSubFormat->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
         }
 
-        // Direct2D Brushes
+        // 2. Direct2D Brushes
         ctx->CreateSolidColorBrush(Colors::GlassBackgroundDark, &m_brushBg);
         ctx->CreateSolidColorBrush(Colors::GlassBorder, &m_brushBorder);
         ctx->CreateSolidColorBrush(Colors::AccentBlue, &m_brushSelection);
@@ -147,6 +165,7 @@ namespace Aqua {
         ctx->CreateSolidColorBrush(Colors::TextMuted, &m_brushTextPlaceholder);
         ctx->CreateSolidColorBrush(Colors::GlassSeparator, &m_brushSeparator);
         ctx->CreateSolidColorBrush(Colors::AccentBlue, &m_brushChip);
+        ctx->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.08f), &m_brushBadgeBg);
 
         UpdateSearchResults();
 
@@ -196,82 +215,16 @@ namespace Aqua {
     }
 
     void Spotlight::UpdateSearchResults() {
-        m_results.clear();
-
-        struct BuiltinApp {
-            std::wstring name;
-            std::wstring desc;
-            std::wstring path;
-            std::wstring args;
-            D2D1_COLOR_F color;
-        };
-
-        static const std::vector<BuiltinApp> apps = {
-            { L"Terminal",          L"Windows Terminal & PowerShell", L"wt.exe",       L"",               Colors::AccentGreen },
-            { L"File Explorer",     L"Files, Folders & Drives",       L"explorer.exe", L"",               Colors::AccentBlue },
-            { L"System Settings",   L"Windows Configuration",         L"ms-settings:", L"",               Colors::AccentPurple },
-            { L"Task Manager",      L"Activity & Performance Monitor",L"taskmgr.exe",  L"",               Colors::AccentOrange },
-            { L"Calculator",        L"Arithmetic & Scientific",       L"calc.exe",     L"",               Colors::AccentOrange },
-            { L"Notepad",           L"Quick Text Editor",             L"notepad.exe",  L"",               Colors::AccentBlue },
-            { L"Visual Studio Code",L"Code & Script Editor",          L"code.exe",     L"",               Colors::AccentBlue },
-            { L"Microsoft Edge",    L"Web Browser",                   L"msedge.exe",   L"",               Colors::AccentBlue },
-            { L"Paint",             L"Image & Drawing Tool",          L"mspaint.exe",  L"",               Colors::AccentPurple },
-            { L"Command Prompt",    L"Classic Windows Shell",         L"cmd.exe",      L"",               Colors::AccentGreen }
-        };
-
-        if (m_query.empty()) {
-            for (int i = 0; i < 4; ++i) {
-                m_results.push_back({ apps[i].name, apps[i].desc, apps[i].path, apps[i].args, apps[i].color });
-            }
-        } else {
-            // Check for simple math expression (e.g. 25 * 4, 100 / 2, 50 + 75, 90 - 45)
-            bool isMath = false;
-            double num1 = 0, num2 = 0;
-            wchar_t op = 0;
-            std::wstringstream ss(m_query);
-            if (ss >> num1 >> op >> num2 && (op == L'+' || op == L'-' || op == L'*' || op == L'/')) {
-                double result = 0;
-                if (op == L'+') result = num1 + num2;
-                else if (op == L'-') result = num1 - num2;
-                else if (op == L'*') result = num1 * num2;
-                else if (op == L'/' && num2 != 0) result = num1 / num2;
-
-                wchar_t resBuf[64];
-                swprintf_s(resBuf, L"= %.4g", result);
-                m_results.push_back({ std::wstring(resBuf), L"Calculation Result", L"", L"", Colors::AccentOrange });
-                isMath = true;
-            }
-
-            // Case-insensitive substring search in apps
-            std::wstring qLower = m_query;
-            std::transform(qLower.begin(), qLower.end(), qLower.begin(), ::towlower);
-
-            for (const auto& a : apps) {
-                std::wstring nameLower = a.name;
-                std::transform(nameLower.begin(), nameLower.end(), nameLower.begin(), ::towlower);
-                if (nameLower.find(qLower) != std::wstring::npos) {
-                    m_results.push_back({ a.name, a.desc, a.path, a.args, a.color });
-                }
-            }
-
-            // Add Web Search Option
-            m_results.push_back({
-                L"Search Web for \"" + m_query + L"\"",
-                L"Google Search in default browser",
-                L"https://www.google.com/search?q=" + m_query,
-                L"",
-                Colors::AccentBlue
-            });
-        }
+        m_results = AppCatalogService::Instance().Search(m_query, 6);
 
         // Clamp selection
         if (m_selectedIndex >= static_cast<int>(m_results.size())) {
             m_selectedIndex = std::max(0, static_cast<int>(m_results.size()) - 1);
         }
 
-        // Resize window to fit results
-        int resultCount = std::min(static_cast<int>(m_results.size()), 5);
-        int targetHeight = m_baseHeight + (resultCount > 0 ? (resultCount * static_cast<int>(50 * m_dpiScale) + static_cast<int>(12 * m_dpiScale)) : 0);
+        // Resize window to dynamically fit results
+        int resultCount = static_cast<int>(m_results.size());
+        int targetHeight = m_baseHeight + (resultCount > 0 ? (resultCount * static_cast<int>(52 * m_dpiScale) + static_cast<int>(12 * m_dpiScale)) : 0);
 
         if (targetHeight != m_height) {
             m_height = targetHeight;
@@ -289,10 +242,43 @@ namespace Aqua {
         }
     }
 
-    void Spotlight::ExecuteSelected() {
+    void Spotlight::CopyToClipboard(const std::wstring& text) {
+        if (!OpenClipboard(m_hwnd)) return;
+        EmptyClipboard();
+
+        size_t bytes = (text.length() + 1) * sizeof(wchar_t);
+        HGLOBAL hMem = GlobalAlloc(GMEM_MOVEABLE, bytes);
+        if (hMem) {
+            void* pMem = GlobalLock(hMem);
+            if (pMem) {
+                memcpy(pMem, text.c_str(), bytes);
+                GlobalUnlock(hMem);
+                SetClipboardData(CF_UNICODETEXT, hMem);
+            }
+        }
+        CloseClipboard();
+    }
+
+    void Spotlight::ExecuteSelected(bool revealInExplorer) {
         if (m_selectedIndex >= 0 && m_selectedIndex < static_cast<int>(m_results.size())) {
             const auto& res = m_results[m_selectedIndex];
-            if (!res.execPath.empty()) {
+
+            if (res.type == CatalogItemType::Calculation) {
+                // Calculation: copy result number to clipboard
+                std::wstring val = res.name;
+                if (val.rfind(L"= ", 0) == 0) {
+                    val = val.substr(2);
+                }
+                CopyToClipboard(val);
+            } else if (revealInExplorer && !res.execPath.empty()) {
+                // Reveal file location in Windows Explorer
+                std::wstring resolved = IconManager::Instance().ResolvePath(res.execPath);
+                std::wstring args = L"/select,\"" + resolved + L"\"";
+                ShellExecuteW(nullptr, L"open", L"explorer.exe", args.c_str(), nullptr, SW_SHOWNORMAL);
+            } else if (res.type == CatalogItemType::Command) {
+                // Execute command in console
+                ShellExecuteW(nullptr, L"open", L"cmd.exe", res.execArgs.c_str(), nullptr, SW_SHOWNORMAL);
+            } else if (!res.execPath.empty()) {
                 ShellExecuteW(nullptr, L"open", res.execPath.c_str(), res.execArgs.empty() ? nullptr : res.execArgs.c_str(), nullptr, SW_SHOWNORMAL);
             }
         }
@@ -307,7 +293,7 @@ namespace Aqua {
         float h = static_cast<float>(m_height);
         float corner = 16.0f * m_dpiScale;
 
-        // 1. Frosted Glass Capsule
+        // 1. Frosted Glass Capsule Background
         D2D1_ROUNDED_RECT box = D2D1::RoundedRect(D2D1::RectF(0, 0, w, h), corner, corner);
         ctx->FillRoundedRectangle(box, m_brushBg.Get());
         ctx->DrawRoundedRectangle(box, m_brushBorder.Get(), 1.2f);
@@ -315,13 +301,13 @@ namespace Aqua {
         // 2. Search Icon (Left)
         float cx = 28.0f * m_dpiScale;
         float cy = (m_baseHeight * 0.5f);
-        float r = 7.0f * m_dpiScale;
-        ctx->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(cx, cy), r, r), m_brushTextSecondary.Get(), 1.8f);
-        ctx->DrawLine(D2D1::Point2F(cx + r * 0.7f, cy + r * 0.7f), D2D1::Point2F(cx + r * 1.5f, cy + r * 1.5f), m_brushTextSecondary.Get(), 2.0f);
+        float r = 7.5f * m_dpiScale;
+        ctx->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(cx, cy), r, r), m_brushTextSecondary.Get(), 2.0f);
+        ctx->DrawLine(D2D1::Point2F(cx + r * 0.7f, cy + r * 0.7f), D2D1::Point2F(cx + r * 1.55f, cy + r * 1.55f), m_brushTextSecondary.Get(), 2.2f);
 
         // 3. Search Query / Placeholder
-        float textLeft = 48.0f * m_dpiScale;
-        float textRight = w - (20.0f * m_dpiScale);
+        float textLeft = 52.0f * m_dpiScale;
+        float textRight = w - (24.0f * m_dpiScale);
         D2D1_RECT_F queryRect = D2D1::RectF(textLeft, 0, textRight, static_cast<float>(m_baseHeight));
 
         if (m_query.empty()) {
@@ -343,10 +329,10 @@ namespace Aqua {
 
             // Blinking cursor
             if (m_showCursor) {
-                float cursorX = textLeft + static_cast<float>(m_query.length()) * 10.0f * m_dpiScale + 2.0f;
+                float cursorX = textLeft + static_cast<float>(m_query.length()) * 10.5f * m_dpiScale + 2.0f;
                 ctx->DrawLine(
-                    D2D1::Point2F(cursorX, static_cast<float>(m_baseHeight) * 0.28f),
-                    D2D1::Point2F(cursorX, static_cast<float>(m_baseHeight) * 0.72f),
+                    D2D1::Point2F(cursorX, static_cast<float>(m_baseHeight) * 0.26f),
+                    D2D1::Point2F(cursorX, static_cast<float>(m_baseHeight) * 0.74f),
                     m_brushSelection.Get(),
                     2.0f
                 );
@@ -364,10 +350,10 @@ namespace Aqua {
             );
 
             float itemY = static_cast<float>(m_baseHeight) + (6.0f * m_dpiScale);
-            float itemH = 48.0f * m_dpiScale;
+            float itemH = 50.0f * m_dpiScale;
             float padX = 10.0f * m_dpiScale;
 
-            int displayCount = std::min(static_cast<int>(m_results.size()), 5);
+            int displayCount = static_cast<int>(m_results.size());
             for (int i = 0; i < displayCount; ++i) {
                 const auto& item = m_results[i];
                 D2D1_RECT_F itemRect = D2D1::RectF(padX, itemY, w - padX, itemY + itemH);
@@ -378,29 +364,76 @@ namespace Aqua {
                     ctx->FillRoundedRectangle(selBox, m_brushSelection.Get());
                 }
 
-                // Item color chip
-                m_brushChip->SetColor(item.iconColor);
-                D2D1_ROUNDED_RECT chipBox = D2D1::RoundedRect(
-                    D2D1::RectF(itemRect.left + 12.0f * m_dpiScale, itemY + 11.0f * m_dpiScale, itemRect.left + 38.0f * m_dpiScale, itemY + 37.0f * m_dpiScale),
-                    6.0f * m_dpiScale, 6.0f * m_dpiScale
-                );
-                ctx->FillRoundedRectangle(chipBox, m_brushChip.Get());
+                // Render Live Icon or Category Glyph
+                float iconSize = 32.0f * m_dpiScale;
+                float iconX = itemRect.left + 10.0f * m_dpiScale;
+                float iconY = itemY + (itemH - iconSize) * 0.5f;
+                D2D1_RECT_F iconRect = D2D1::RectF(iconX, iconY, iconX + iconSize, iconY + iconSize);
 
-                // Title
-                D2D1_RECT_F titleRect = D2D1::RectF(itemRect.left + 48.0f * m_dpiScale, itemY + 4.0f * m_dpiScale, itemRect.right - 10.0f, itemY + 26.0f * m_dpiScale);
+                ComPtr<ID2D1Bitmap> appBitmap = nullptr;
+                if (!item.iconPath.empty()) {
+                    appBitmap = IconManager::Instance().GetIconForPath(ctx, item.iconPath, static_cast<int>(iconSize));
+                } else if (!item.execPath.empty() && item.type != CatalogItemType::WebSearch && item.type != CatalogItemType::WebUrl) {
+                    appBitmap = IconManager::Instance().GetIconForPath(ctx, item.execPath, static_cast<int>(iconSize));
+                }
+
+                if (appBitmap) {
+                    ctx->DrawBitmap(appBitmap.Get(), iconRect);
+                } else {
+                    // Fallback Category Chip
+                    m_brushChip->SetColor(item.accentColor);
+                    D2D1_ROUNDED_RECT chipBox = D2D1::RoundedRect(iconRect, 6.0f * m_dpiScale, 6.0f * m_dpiScale);
+                    ctx->FillRoundedRectangle(chipBox, m_brushChip.Get());
+
+                    // Glyph text inside chip
+                    std::wstring glyph = L"★";
+                    if (item.type == CatalogItemType::Calculation) glyph = L"=";
+                    else if (item.type == CatalogItemType::Command) glyph = L">_";
+                    else if (item.type == CatalogItemType::WebSearch) glyph = L"🔍";
+                    else if (item.type == CatalogItemType::WebUrl) glyph = L"🌐";
+                    else if (item.type == CatalogItemType::Setting) glyph = L"⚙";
+
+                    ctx->DrawTextW(glyph.c_str(), static_cast<UINT32>(glyph.length()), m_badgeFormat.Get(), iconRect, m_brushTextPrimary.Get());
+                }
+
+                // Category Badge (Right Side)
+                std::wstring badgeText = L"App";
+                if (item.type == CatalogItemType::SystemTool) badgeText = L"System Tool";
+                else if (item.type == CatalogItemType::Setting) badgeText = L"Setting";
+                else if (item.type == CatalogItemType::Calculation) badgeText = L"Calculator";
+                else if (item.type == CatalogItemType::Command) badgeText = L"Command";
+                else if (item.type == CatalogItemType::FileOrFolder) badgeText = L"File";
+                else if (item.type == CatalogItemType::WebSearch) badgeText = L"Web";
+                else if (item.type == CatalogItemType::WebUrl) badgeText = L"URL";
+
+                float badgeW = static_cast<float>(badgeText.length()) * 6.5f * m_dpiScale + 14.0f * m_dpiScale;
+                float badgeH = 18.0f * m_dpiScale;
+                float badgeRight = itemRect.right - 12.0f * m_dpiScale;
+                float badgeLeft = badgeRight - badgeW;
+                float badgeTop = itemY + (itemH - badgeH) * 0.5f;
+                D2D1_RECT_F badgeRect = D2D1::RectF(badgeLeft, badgeTop, badgeRight, badgeTop + badgeH);
+
+                D2D1_ROUNDED_RECT badgeBox = D2D1::RoundedRect(badgeRect, 4.0f * m_dpiScale, 4.0f * m_dpiScale);
+                ctx->FillRoundedRectangle(badgeBox, m_brushBadgeBg.Get());
+                ctx->DrawTextW(badgeText.c_str(), static_cast<UINT32>(badgeText.length()), m_badgeFormat.Get(), badgeRect, (i == m_selectedIndex) ? m_brushTextPrimary.Get() : m_brushTextSecondary.Get());
+
+                // Title & Subtitle
+                float contentLeft = iconX + iconSize + 12.0f * m_dpiScale;
+                float contentRight = badgeLeft - 8.0f * m_dpiScale;
+
+                D2D1_RECT_F titleRect = D2D1::RectF(contentLeft, itemY + 5.0f * m_dpiScale, contentRight, itemY + 27.0f * m_dpiScale);
                 ctx->DrawTextW(
-                    item.title.c_str(),
-                    static_cast<UINT32>(item.title.length()),
+                    item.name.c_str(),
+                    static_cast<UINT32>(item.name.length()),
                     m_resultTitleFormat.Get(),
                     titleRect,
                     m_brushTextPrimary.Get()
                 );
 
-                // Subtitle
-                D2D1_RECT_F subRect = D2D1::RectF(itemRect.left + 48.0f * m_dpiScale, itemY + 24.0f * m_dpiScale, itemRect.right - 10.0f, itemY + 44.0f * m_dpiScale);
+                D2D1_RECT_F subRect = D2D1::RectF(contentLeft, itemY + 26.0f * m_dpiScale, contentRight, itemY + 46.0f * m_dpiScale);
                 ctx->DrawTextW(
-                    item.subtitle.c_str(),
-                    static_cast<UINT32>(item.subtitle.length()),
+                    item.description.c_str(),
+                    static_cast<UINT32>(item.description.length()),
                     m_resultSubFormat.Get(),
                     subRect,
                     (i == m_selectedIndex) ? m_brushTextPrimary.Get() : m_brushTextSecondary.Get()
@@ -461,12 +494,16 @@ namespace Aqua {
         case WM_KEYDOWN: {
             switch (wParam) {
             case VK_BACK:
-                if (!m_query.empty()) {
+                if ((GetKeyState(VK_CONTROL) & 0x8000) != 0) {
+                    // Ctrl+Backspace deletes previous word
+                    while (!m_query.empty() && m_query.back() == L' ') m_query.pop_back();
+                    while (!m_query.empty() && m_query.back() != L' ') m_query.pop_back();
+                } else if (!m_query.empty()) {
                     m_query.pop_back();
-                    m_selectedIndex = 0;
-                    UpdateSearchResults();
-                    Render();
                 }
+                m_selectedIndex = 0;
+                UpdateSearchResults();
+                Render();
                 return 0;
 
             case VK_ESCAPE:
@@ -487,21 +524,37 @@ namespace Aqua {
                 }
                 return 0;
 
-            case VK_RETURN:
-                ExecuteSelected();
+            case VK_RETURN: {
+                bool reveal = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+                ExecuteSelected(reveal);
                 return 0;
             }
+            }
             break;
+        }
+
+        case WM_MOUSEMOVE: {
+            float my = static_cast<float>(GET_Y_LPARAM(lParam));
+            if (my > static_cast<float>(m_baseHeight)) {
+                float relY = my - static_cast<float>(m_baseHeight) - (6.0f * m_dpiScale);
+                int idx = static_cast<int>(relY / (52.0f * m_dpiScale));
+                if (idx >= 0 && idx < static_cast<int>(m_results.size()) && idx != m_selectedIndex) {
+                    m_selectedIndex = idx;
+                    Render();
+                }
+            }
+            return 0;
         }
 
         case WM_LBUTTONDOWN: {
             float my = static_cast<float>(GET_Y_LPARAM(lParam));
             if (my > static_cast<float>(m_baseHeight)) {
                 float relY = my - static_cast<float>(m_baseHeight) - (6.0f * m_dpiScale);
-                int idx = static_cast<int>(relY / (50.0f * m_dpiScale));
+                int idx = static_cast<int>(relY / (52.0f * m_dpiScale));
                 if (idx >= 0 && idx < static_cast<int>(m_results.size())) {
                     m_selectedIndex = idx;
-                    ExecuteSelected();
+                    bool reveal = (GetKeyState(VK_CONTROL) & 0x8000) != 0;
+                    ExecuteSelected(reveal);
                 }
             }
             return 0;
@@ -516,4 +569,3 @@ namespace Aqua {
     }
 
 }
-

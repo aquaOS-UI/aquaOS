@@ -1,6 +1,7 @@
 #include "Common.h"
 #include "SystemInfo.h"
 #include "DCompRenderer.h"
+#include "AppCatalogService.h"
 #include "TopBar.h"
 #include "Dock.h"
 #include "Spotlight.h"
@@ -55,6 +56,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
         CoUninitialize();
         return 1;
     }
+
+    // Initialize System App Catalog Service (indexes installed software asynchronously)
+    Aqua::AppCatalogService::Instance().Initialize();
 
     // 5. Instantiate UI Components
     std::vector<std::unique_ptr<Aqua::TopBar>> topBars;
@@ -344,6 +348,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
     Aqua::ThemeManager::Instance().Shutdown();
     Aqua::WindowTiler::Instance().Shutdown();
     Aqua::QuickLook::Instance().Shutdown();
+    Aqua::AppCatalogService::Instance().Shutdown();
     Aqua::TaskbarController::Instance().RestoreTaskbar();
     Aqua::DCompEngine::Instance().Shutdown();
     CoUninitialize();
