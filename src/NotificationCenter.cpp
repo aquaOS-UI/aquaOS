@@ -163,6 +163,7 @@ namespace Aqua {
         ctx->CreateSolidColorBrush(Colors::AccentPurple, &m_brushAccentPurple);
         ctx->CreateSolidColorBrush(Colors::AccentOrange, &m_brushAccentOrange);
         ctx->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.10f), &m_brushTrack);
+        ctx->CreateSolidColorBrush(Colors::AccentBlue, &m_brushRingProgress);
 
         // Initial system metrics query
         FILETIME idle, kern, user;
@@ -220,11 +221,10 @@ namespace Aqua {
 
         if (percent <= 0.001f) return;
 
-        ComPtr<ID2D1SolidColorBrush> progressBrush;
-        ctx->CreateSolidColorBrush(color, &progressBrush);
+        m_brushRingProgress->SetColor(color);
 
         if (percent >= 0.999f) {
-            ctx->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(cx, cy), radius, radius), progressBrush.Get(), thickness);
+            ctx->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(cx, cy), radius, radius), m_brushRingProgress.Get(), thickness);
             return;
         }
 
@@ -267,7 +267,7 @@ namespace Aqua {
             ComPtr<ID2D1StrokeStyle> strokeStyle;
             d2dFactory->CreateStrokeStyle(strokeProps, nullptr, 0, &strokeStyle);
 
-            ctx->DrawGeometry(path.Get(), progressBrush.Get(), thickness, strokeStyle.Get());
+            ctx->DrawGeometry(path.Get(), m_brushRingProgress.Get(), thickness, strokeStyle.Get());
         }
     }
 
@@ -276,6 +276,18 @@ namespace Aqua {
 
         m_visible = true;
         UpdateMetrics();
+
+        // Position on the active monitor under cursor
+        POINT pt;
+        GetCursorPos(&pt);
+        HMONITOR hMon = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+        MONITORINFO mi = { sizeof(MONITORINFO) };
+        if (!hMon || !GetMonitorInfoW(hMon, &mi)) {
+            mi.rcMonitor = { 0, 0, m_screenWidth, m_screenHeight };
+        }
+
+        m_windowX = mi.rcMonitor.right - m_panelWidth;
+        m_windowY = mi.rcMonitor.top + 32;
 
         // Slide from right
         m_currentOffset = static_cast<float>(m_panelWidth);

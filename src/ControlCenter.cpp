@@ -163,8 +163,16 @@ namespace Aqua {
         m_visible = true;
         m_soundVolume = SystemInfo::GetMasterVolume();
 
-        int posX = m_screenWidth - m_width - 12;
-        int posY = 38;
+        POINT pt;
+        GetCursorPos(&pt);
+        HMONITOR hMon = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+        MONITORINFO mi = { sizeof(MONITORINFO) };
+        if (!hMon || !GetMonitorInfoW(hMon, &mi)) {
+            mi.rcMonitor = { 0, 0, m_screenWidth, m_screenHeight };
+        }
+
+        int posX = mi.rcMonitor.right - m_width - 12;
+        int posY = mi.rcMonitor.top + 38;
         SetWindowPos(m_hwnd, HWND_TOPMOST, posX, posY, m_width, m_height, SWP_SHOWWINDOW);
         SetForegroundWindow(m_hwnd);
         Render();

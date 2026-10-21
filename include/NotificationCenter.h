@@ -77,6 +77,7 @@ namespace Aqua {
         ComPtr<ID2D1SolidColorBrush> m_brushAccentPurple;
         ComPtr<ID2D1SolidColorBrush> m_brushAccentOrange;
         ComPtr<ID2D1SolidColorBrush> m_brushTrack;
+        ComPtr<ID2D1SolidColorBrush> m_brushRingProgress;
     };
 
 }

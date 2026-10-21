@@ -28,7 +28,10 @@ namespace Aqua {
         TopBar();
         ~TopBar();
 
-        bool Create(HINSTANCE hInstance, int screenWidth, int barHeight = 32);
+        bool Create(HINSTANCE hInstance, int x, int y, int width, int height = 32);
+        bool Create(HINSTANCE hInstance, int screenWidth, int barHeight = 32) {
+            return Create(hInstance, 0, 0, screenWidth, barHeight);
+        }
         void Show();
         void Hide();
         HWND GetHwnd() const { return m_hwnd; }
@@ -61,6 +64,8 @@ namespace Aqua {
 
         HWND m_hwnd = nullptr;
         DCompSurface m_surface;
+        int m_posX = 0;
+        int m_posY = 0;
         int m_width = 0;
         int m_height = 32;
         float m_dpiScale = 1.0f;

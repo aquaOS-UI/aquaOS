@@ -33,9 +33,11 @@ namespace Aqua {
         }
     }
 
-    bool TopBar::Create(HINSTANCE hInstance, int screenWidth, int barHeight) {
-        m_width = screenWidth;
-        m_height = barHeight;
+    bool TopBar::Create(HINSTANCE hInstance, int x, int y, int width, int height) {
+        m_posX = x;
+        m_posY = y;
+        m_width = width;
+        m_height = height;
 
         WNDCLASSEXW wc = { sizeof(WNDCLASSEXW) };
         wc.lpfnWndProc = TopBar::WndProc;
@@ -49,7 +51,7 @@ namespace Aqua {
             TOPBAR_CLASS_NAME,
             L"AquaOS TopBar",
             WS_POPUP,
-            0, 0, m_width, m_height,
+            m_posX, m_posY, m_width, m_height,
             nullptr, nullptr, hInstance, this
         );
 

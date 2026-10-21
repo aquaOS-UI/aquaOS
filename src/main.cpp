@@ -1,4 +1,5 @@
 #include "Common.h"
+#include "SystemInfo.h"
 #include "DCompRenderer.h"
 #include "TopBar.h"
 #include "Dock.h"
@@ -56,7 +57,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
     }
 
     // 5. Instantiate UI Components
-    Aqua::TopBar topBar;
+    std::vector<std::unique_ptr<Aqua::TopBar>> topBars;
     Aqua::Dock dock;
     Aqua::Spotlight spotlight;
     Aqua::ControlCenter controlCenter;
@@ -65,7 +66,66 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
     Aqua::NotificationCenter notificationCenter;
     Aqua::StageManager stageManager;
 
-    if (!topBar.Create(hInstance, screenWidth, 32)) {
+    auto monitors = Aqua::MonitorManager::GetMonitors();
+    if (monitors.empty()) {
+        Aqua::MonitorData defMon;
+        defMon.rcMonitor = { 0, 0, screenWidth, screenHeight };
+        monitors.push_back(defMon);
+    }
+
+    for (const auto& mon : monitors) {
+        auto bar = std::make_unique<Aqua::TopBar>();
+        int monW = mon.rcMonitor.right - mon.rcMonitor.left;
+        if (bar->Create(hInstance, mon.rcMonitor.left, mon.rcMonitor.top, monW, 32)) {
+            bar->SetSpotlightCallback([&]() {
+                controlCenter.Hide();
+                missionControl.Hide();
+                launchpad.Hide();
+                notificationCenter.Hide();
+                spotlight.Toggle();
+            });
+
+            bar->SetControlCenterCallback([&]() {
+                spotlight.Hide();
+                missionControl.Hide();
+                launchpad.Hide();
+                notificationCenter.Hide();
+                controlCenter.Toggle();
+            });
+
+            bar->SetMissionControlCallback([&]() {
+                spotlight.Hide();
+                controlCenter.Hide();
+                launchpad.Hide();
+                notificationCenter.Hide();
+                missionControl.Toggle();
+            });
+
+            bar->SetLaunchpadCallback([&]() {
+                spotlight.Hide();
+                controlCenter.Hide();
+                missionControl.Hide();
+                notificationCenter.Hide();
+                launchpad.Toggle();
+            });
+
+            bar->SetNotificationCenterCallback([&]() {
+                spotlight.Hide();
+                controlCenter.Hide();
+                missionControl.Hide();
+                launchpad.Hide();
+                notificationCenter.Toggle();
+            });
+
+            bar->SetStageManagerCallback([&]() {
+                stageManager.Toggle();
+            });
+
+            topBars.push_back(std::move(bar));
+        }
+    }
+
+    if (topBars.empty()) {
         MessageBoxW(nullptr, L"Failed to create AquaOS TopBar.", L"AquaOS Error", MB_OK | MB_ICONERROR);
         return 1;
     }
@@ -126,50 +186,6 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
     }
 
     // 6. Connect Inter-component Callbacks
-    topBar.SetSpotlightCallback([&]() {
-        controlCenter.Hide();
-        missionControl.Hide();
-        launchpad.Hide();
-        notificationCenter.Hide();
-        spotlight.Toggle();
-    });
-
-    topBar.SetControlCenterCallback([&]() {
-        spotlight.Hide();
-        missionControl.Hide();
-        launchpad.Hide();
-        notificationCenter.Hide();
-        controlCenter.Toggle();
-    });
-
-    topBar.SetMissionControlCallback([&]() {
-        spotlight.Hide();
-        controlCenter.Hide();
-        launchpad.Hide();
-        notificationCenter.Hide();
-        missionControl.Toggle();
-    });
-
-    topBar.SetLaunchpadCallback([&]() {
-        spotlight.Hide();
-        controlCenter.Hide();
-        missionControl.Hide();
-        notificationCenter.Hide();
-        launchpad.Toggle();
-    });
-
-    topBar.SetNotificationCenterCallback([&]() {
-        spotlight.Hide();
-        controlCenter.Hide();
-        missionControl.Hide();
-        launchpad.Hide();
-        notificationCenter.Toggle();
-    });
-
-    topBar.SetStageManagerCallback([&]() {
-        stageManager.Toggle();
-    });
-
     dock.SetSpotlightCallback([&]() {
         controlCenter.Hide();
         missionControl.Hide();
@@ -228,7 +244,9 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
     Aqua::TaskbarController::Instance().AdjustWorkArea(32);
 
     // 9. Present the UI Layer
-    topBar.Show();
+    for (auto& bar : topBars) {
+        bar->Show();
+    }
     dock.Show();
 
     // 10. High-performance Win32 Message Loop

@@ -358,14 +358,25 @@ namespace Aqua {
     }
 
     bool Dock::Create(HINSTANCE hInstance, int screenWidth, int screenHeight) {
-        m_screenWidth = screenWidth;
-        m_screenHeight = screenHeight;
+        // Query primary monitor for initial Dock placement
+        HMONITOR hMon = MonitorFromPoint(POINT{ 0, 0 }, MONITOR_DEFAULTTOPRIMARY);
+        MONITORINFO mi = { sizeof(MONITORINFO) };
+        if (hMon && GetMonitorInfoW(hMon, &mi)) {
+            m_currentMonitor = hMon;
+            m_monitorRect = mi.rcMonitor;
+            m_screenWidth = mi.rcMonitor.right - mi.rcMonitor.left;
+            m_screenHeight = mi.rcMonitor.bottom - mi.rcMonitor.top;
+        } else {
+            m_screenWidth = screenWidth;
+            m_screenHeight = screenHeight;
+            m_monitorRect = { 0, 0, screenWidth, screenHeight };
+        }
 
         // Window size accommodates magnified dock + tooltips
         m_windowWidth = 840;
         m_windowHeight = 120;
-        m_windowX = (m_screenWidth - m_windowWidth) / 2;
-        m_windowY = m_screenHeight - m_windowHeight - 6;
+        m_windowX = m_monitorRect.left + (m_screenWidth - m_windowWidth) / 2;
+        m_windowY = m_monitorRect.bottom - m_windowHeight - 6;
 
         WNDCLASSEXW wc = { sizeof(WNDCLASSEXW) };
         wc.lpfnWndProc = Dock::WndProc;
@@ -557,11 +568,46 @@ namespace Aqua {
         }
     }
 
+    void Dock::SummonToMonitor(HMONITOR hMon) {
+        if (!hMon || hMon == m_currentMonitor) return;
+
+        MONITORINFO mi = { sizeof(MONITORINFO) };
+        if (!GetMonitorInfoW(hMon, &mi)) return;
+
+        m_currentMonitor = hMon;
+        m_monitorRect = mi.rcMonitor;
+        m_screenWidth = mi.rcMonitor.right - mi.rcMonitor.left;
+        m_screenHeight = mi.rcMonitor.bottom - mi.rcMonitor.top;
+
+        m_windowX = m_monitorRect.left + (m_screenWidth - m_windowWidth) / 2;
+        m_windowY = m_monitorRect.bottom - m_windowHeight - 6;
+
+        SetWindowPos(m_hwnd, HWND_TOPMOST, m_windowX, m_windowY, m_windowWidth, m_windowHeight, SWP_NOACTIVATE);
+        m_needsRedraw = true;
+    }
+
     void Dock::UpdatePhysics() {
         // Track last active non-Aqua foreground window
         HWND curFg = GetForegroundWindow();
         if (curFg && curFg != m_hwnd && !IsAquaWindow(curFg)) {
             m_lastActiveAppHwnd = curFg;
+        }
+
+        // Multi-monitor Dock Summoning:
+        // When cursor pushes against the bottom edge of ANY monitor, summon Dock to that monitor!
+        POINT cursorPt;
+        if (GetCursorPos(&cursorPt)) {
+            HMONITOR cursorMon = MonitorFromPoint(cursorPt, MONITOR_DEFAULTTONEAREST);
+            if (cursorMon && cursorMon != m_currentMonitor) {
+                MONITORINFO mi = { sizeof(MONITORINFO) };
+                if (GetMonitorInfoW(cursorMon, &mi)) {
+                    if (cursorPt.y >= mi.rcMonitor.bottom - 8 &&
+                        cursorPt.x >= mi.rcMonitor.left &&
+                        cursorPt.x <= mi.rcMonitor.right) {
+                        SummonToMonitor(cursorMon);
+                    }
+                }
+            }
         }
 
         // Periodic Z-Order enforcement (every ~1s / 60 frames)

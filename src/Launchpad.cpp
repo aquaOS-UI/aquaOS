@@ -339,9 +339,27 @@ namespace Aqua {
         m_currentPage = 0;
         m_hoveredIndex = -1;
 
+        // Cover active monitor under cursor
+        POINT pt;
+        GetCursorPos(&pt);
+        HMONITOR hMon = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+        MONITORINFO mi = { sizeof(MONITORINFO) };
+        if (!hMon || !GetMonitorInfoW(hMon, &mi)) {
+            mi.rcMonitor = { 0, 0, m_screenWidth, m_screenHeight };
+        }
+
+        int monW = mi.rcMonitor.right - mi.rcMonitor.left;
+        int monH = mi.rcMonitor.bottom - mi.rcMonitor.top;
+        if (monW != m_screenWidth || monH != m_screenHeight) {
+            m_screenWidth = monW;
+            m_screenHeight = monH;
+            m_surface.Resize(m_screenWidth, m_screenHeight);
+        }
+
+        SetWindowPos(m_hwnd, HWND_TOPMOST, mi.rcMonitor.left, mi.rcMonitor.top, m_screenWidth, m_screenHeight, SWP_SHOWWINDOW);
+
         UpdateFilter();
 
-        ShowWindow(m_hwnd, SW_SHOW);
         SetForegroundWindow(m_hwnd);
         SetActiveWindow(m_hwnd);
 

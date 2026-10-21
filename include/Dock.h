@@ -76,11 +76,15 @@ namespace Aqua {
         void DrawIcon(ID2D1DeviceContext* ctx, const DockItem& item, float x, float y, float size);
         void DrawTooltip(ID2D1DeviceContext* ctx, const std::wstring& text, float centerX, float topY);
         void ShowContextMenu(int itemIndex, int screenX, int screenY);
+        void SummonToMonitor(HMONITOR hMon);
 
         HWND m_hwnd = nullptr;
         HWND m_lastActiveAppHwnd = nullptr;
         int m_stateUpdateFrame = 0;
         DCompSurface m_surface;
+
+        HMONITOR m_currentMonitor = nullptr;
+        RECT m_monitorRect = {};
 
         int m_screenWidth = 0;
         int m_screenHeight = 0;

@@ -1,5 +1,6 @@
 #include "MissionControl.h"
 #include "IconManager.h"
+#include "SystemInfo.h"
 #include <algorithm>
 #include <cmath>
 
@@ -18,8 +19,17 @@ namespace Aqua {
     }
 
     bool MissionControl::Create(HINSTANCE hInstance, int screenWidth, int screenHeight) {
-        m_screenWidth = screenWidth;
-        m_screenHeight = screenHeight;
+        int vx = GetSystemMetrics(SM_XVIRTUALSCREEN);
+        int vy = GetSystemMetrics(SM_YVIRTUALSCREEN);
+        int vw = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+        int vh = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+        if (vw <= 0) vw = screenWidth;
+        if (vh <= 0) vh = screenHeight;
+
+        m_vx = vx;
+        m_vy = vy;
+        m_screenWidth = vw;
+        m_screenHeight = vh;
 
         WNDCLASSEXW wc = { sizeof(WNDCLASSEXW) };
         wc.lpfnWndProc = MissionControl::WndProc;
@@ -33,7 +43,7 @@ namespace Aqua {
             MISSION_CONTROL_CLASS,
             L"AquaOS Mission Control",
             WS_POPUP,
-            0, 0, m_screenWidth, m_screenHeight,
+            m_vx, m_vy, m_screenWidth, m_screenHeight,
             nullptr, nullptr, hInstance, this
         );
 
@@ -259,118 +269,147 @@ namespace Aqua {
     void MissionControl::CalculateLayout() {
         if (m_cards.empty()) return;
 
-        float topMargin = 85.0f * m_dpiScale;
-        float bottomMargin = 60.0f * m_dpiScale;
-        float sideMargin = 70.0f * m_dpiScale;
-
-        float availW = static_cast<float>(m_screenWidth) - (sideMargin * 2.0f);
-        float availH = static_cast<float>(m_screenHeight) - topMargin - bottomMargin;
-
-        size_t n = m_cards.size();
-        int cols = 1;
-        int rows = 1;
-
-        if (n == 1) {
-            cols = 1; rows = 1;
-        } else if (n == 2) {
-            cols = 2; rows = 1;
-        } else if (n <= 4) {
-            cols = 2; rows = 2;
-        } else if (n <= 6) {
-            cols = 3; rows = 2;
-        } else if (n <= 9) {
-            cols = 3; rows = 3;
-        } else if (n <= 12) {
-            cols = 4; rows = 3;
-        } else {
-            cols = static_cast<int>(std::ceil(std::sqrt(static_cast<double>(n))));
-            if (cols > 5) cols = 5;
-            rows = static_cast<int>((n + cols - 1) / cols);
+        auto monitors = MonitorManager::GetMonitors();
+        if (monitors.empty()) {
+            MonitorData defMon;
+            defMon.rcMonitor = { m_vx, m_vy, m_vx + m_screenWidth, m_vy + m_screenHeight };
+            monitors.push_back(defMon);
         }
 
-        float cellW = availW / static_cast<float>(cols);
-        float cellH = availH / static_cast<float>(rows);
-
-        float gapX = 20.0f * m_dpiScale;
-        float gapY = 20.0f * m_dpiScale;
-
-        for (size_t i = 0; i < n; ++i) {
-            auto& card = m_cards[i];
-
-            int c = static_cast<int>(i % cols);
-            int r = static_cast<int>(i / cols);
-
-            // In the last row, center remaining cards if fewer than cols
-            int cardsInThisRow = cols;
-            if (r == rows - 1) {
-                int remainder = static_cast<int>(n % cols);
-                if (remainder != 0) cardsInThisRow = remainder;
+        // Partition cards by monitor
+        std::vector<std::vector<size_t>> monitorCards(monitors.size());
+        for (size_t i = 0; i < m_cards.size(); ++i) {
+            HMONITOR hMon = MonitorFromWindow(m_cards[i].hwnd, MONITOR_DEFAULTTONEAREST);
+            size_t targetIdx = 0;
+            for (size_t m = 0; m < monitors.size(); ++m) {
+                if (monitors[m].hMonitor == hMon) {
+                    targetIdx = m;
+                    break;
+                }
             }
+            monitorCards[targetIdx].push_back(i);
+        }
 
-            float rowStartX = sideMargin + ((static_cast<float>(cols) - static_cast<float>(cardsInThisRow)) * cellW * 0.5f);
+        // Layout cards for each monitor independently
+        for (size_t m = 0; m < monitors.size(); ++m) {
+            const auto& mon = monitors[m];
+            const auto& cardIndices = monitorCards[m];
+            if (cardIndices.empty()) continue;
 
-            float cardX = rowStartX + c * cellW + (gapX * 0.5f);
-            float cardY = topMargin + r * cellH + (gapY * 0.5f);
-            float cardW = cellW - gapX;
-            float cardH = cellH - gapY;
+            float monLocalX = static_cast<float>(mon.rcMonitor.left - m_vx);
+            float monLocalY = static_cast<float>(mon.rcMonitor.top - m_vy);
+            float monLocalW = static_cast<float>(mon.rcMonitor.right - mon.rcMonitor.left);
+            float monLocalH = static_cast<float>(mon.rcMonitor.bottom - mon.rcMonitor.top);
 
-            // Cap maximum card dimensions for 1 or 2 windows
+            float topMargin = monLocalY + 85.0f * m_dpiScale;
+            float bottomMargin = 60.0f * m_dpiScale;
+            float sideMargin = 70.0f * m_dpiScale;
+
+            float availW = monLocalW - (sideMargin * 2.0f);
+            float availH = monLocalH - (topMargin - monLocalY) - bottomMargin;
+
+            size_t n = cardIndices.size();
+            int cols = 1;
+            int rows = 1;
+
             if (n == 1) {
-                cardW = std::min(cardW, 880.0f * m_dpiScale);
-                cardH = std::min(cardH, 560.0f * m_dpiScale);
-                cardX = (static_cast<float>(m_screenWidth) - cardW) * 0.5f;
-                cardY = topMargin + (availH - cardH) * 0.5f;
+                cols = 1; rows = 1;
             } else if (n == 2) {
-                cardW = std::min(cardW, 640.0f * m_dpiScale);
-                cardH = std::min(cardH, 440.0f * m_dpiScale);
-                cardY = topMargin + (availH - cardH) * 0.5f;
+                cols = 2; rows = 1;
+            } else if (n <= 4) {
+                cols = 2; rows = 2;
+            } else if (n <= 6) {
+                cols = 3; rows = 2;
+            } else if (n <= 9) {
+                cols = 3; rows = 3;
+            } else {
+                cols = static_cast<int>(std::ceil(std::sqrt(static_cast<double>(n))));
+                if (cols > 4) cols = 4;
+                rows = static_cast<int>((n + cols - 1) / cols);
             }
 
-            card.cardRect = D2D1::RectF(cardX, cardY, cardX + cardW, cardY + cardH);
+            float cellW = availW / static_cast<float>(cols);
+            float cellH = availH / static_cast<float>(rows);
 
-            // Close button at top right: 18x18 circle
-            float btnSize = 18.0f * m_dpiScale;
-            float btnX = card.cardRect.right - btnSize - (10.0f * m_dpiScale);
-            float btnY = card.cardRect.top + (10.0f * m_dpiScale);
-            card.closeButtonRect = D2D1::RectF(btnX, btnY, btnX + btnSize, btnY + btnSize);
+            float gapX = 20.0f * m_dpiScale;
+            float gapY = 20.0f * m_dpiScale;
 
-            // Register DWM Thumbnail
-            HRESULT hr = DwmRegisterThumbnail(m_hwnd, card.hwnd, &card.hThumbnail);
-            if (SUCCEEDED(hr) && card.hThumbnail) {
-                SIZE srcSize = { 1920, 1080 };
-                DwmQueryThumbnailSourceSize(card.hThumbnail, &srcSize);
-                if (srcSize.cx <= 0 || srcSize.cy <= 0) {
-                    srcSize.cx = 16;
-                    srcSize.cy = 9;
+            for (size_t ci = 0; ci < n; ++ci) {
+                size_t cardIdx = cardIndices[ci];
+                auto& card = m_cards[cardIdx];
+
+                int c = static_cast<int>(ci % cols);
+                int r = static_cast<int>(ci / cols);
+
+                int cardsInThisRow = cols;
+                if (r == rows - 1) {
+                    int remainder = static_cast<int>(n % cols);
+                    if (remainder != 0) cardsInThisRow = remainder;
                 }
 
-                // Available thumbnail area inside card
-                float headerH = 38.0f * m_dpiScale;
-                float pad = 10.0f * m_dpiScale;
-                float maxThumbW = cardW - (pad * 2.0f);
-                float maxThumbH = cardH - headerH - (pad * 1.5f);
+                float rowStartX = monLocalX + sideMargin + ((static_cast<float>(cols) - static_cast<float>(cardsInThisRow)) * cellW * 0.5f);
 
-                float scale = std::min(maxThumbW / static_cast<float>(srcSize.cx), maxThumbH / static_cast<float>(srcSize.cy));
-                float thumbW = std::max(20.0f, static_cast<float>(srcSize.cx) * scale);
-                float thumbH = std::max(20.0f, static_cast<float>(srcSize.cy) * scale);
+                float cardX = rowStartX + c * cellW + (gapX * 0.5f);
+                float cardY = topMargin + r * cellH + (gapY * 0.5f);
+                float cardW = cellW - gapX;
+                float cardH = cellH - gapY;
 
-                float thumbX = cardX + (cardW - thumbW) * 0.5f;
-                float thumbY = cardY + headerH + (maxThumbH - thumbH) * 0.5f;
+                if (n == 1) {
+                    cardW = std::min(cardW, 880.0f * m_dpiScale);
+                    cardH = std::min(cardH, 560.0f * m_dpiScale);
+                    cardX = monLocalX + (monLocalW - cardW) * 0.5f;
+                    cardY = topMargin + (availH - cardH) * 0.5f;
+                } else if (n == 2) {
+                    cardW = std::min(cardW, 640.0f * m_dpiScale);
+                    cardH = std::min(cardH, 440.0f * m_dpiScale);
+                    cardY = topMargin + (availH - cardH) * 0.5f;
+                }
 
-                card.thumbRect = D2D1::RectF(thumbX, thumbY, thumbX + thumbW, thumbY + thumbH);
+                card.cardRect = D2D1::RectF(cardX, cardY, cardX + cardW, cardY + cardH);
 
-                DWM_THUMBNAIL_PROPERTIES props = {};
-                props.dwFlags = DWM_TNP_RECTDESTINATION | DWM_TNP_VISIBLE | DWM_TNP_OPACITY;
-                props.rcDestination = RECT{
-                    static_cast<LONG>(thumbX),
-                    static_cast<LONG>(thumbY),
-                    static_cast<LONG>(thumbX + thumbW),
-                    static_cast<LONG>(thumbY + thumbH)
-                };
-                props.fVisible = TRUE;
-                props.opacity = 255;
+                // Close button at top right: 18x18 circle
+                float btnSize = 18.0f * m_dpiScale;
+                float btnX = card.cardRect.right - btnSize - (10.0f * m_dpiScale);
+                float btnY = card.cardRect.top + (10.0f * m_dpiScale);
+                card.closeButtonRect = D2D1::RectF(btnX, btnY, btnX + btnSize, btnY + btnSize);
 
-                DwmUpdateThumbnailProperties(card.hThumbnail, &props);
+                // Register DWM Thumbnail
+                HRESULT hr = DwmRegisterThumbnail(m_hwnd, card.hwnd, &card.hThumbnail);
+                if (SUCCEEDED(hr) && card.hThumbnail) {
+                    SIZE srcSize = { 1920, 1080 };
+                    DwmQueryThumbnailSourceSize(card.hThumbnail, &srcSize);
+                    if (srcSize.cx <= 0 || srcSize.cy <= 0) {
+                        srcSize.cx = 16;
+                        srcSize.cy = 9;
+                    }
+
+                    float headerH = 38.0f * m_dpiScale;
+                    float pad = 10.0f * m_dpiScale;
+                    float maxThumbW = cardW - (pad * 2.0f);
+                    float maxThumbH = cardH - headerH - (pad * 1.5f);
+
+                    float scale = std::min(maxThumbW / static_cast<float>(srcSize.cx), maxThumbH / static_cast<float>(srcSize.cy));
+                    float thumbW = std::max(20.0f, static_cast<float>(srcSize.cx) * scale);
+                    float thumbH = std::max(20.0f, static_cast<float>(srcSize.cy) * scale);
+
+                    float thumbX = cardX + (cardW - thumbW) * 0.5f;
+                    float thumbY = cardY + headerH + (maxThumbH - thumbH) * 0.5f;
+
+                    card.thumbRect = D2D1::RectF(thumbX, thumbY, thumbX + thumbW, thumbY + thumbH);
+
+                    DWM_THUMBNAIL_PROPERTIES props = {};
+                    props.dwFlags = DWM_TNP_RECTDESTINATION | DWM_TNP_VISIBLE | DWM_TNP_OPACITY;
+                    props.rcDestination = RECT{
+                        static_cast<LONG>(thumbX),
+                        static_cast<LONG>(thumbY),
+                        static_cast<LONG>(thumbX + thumbW),
+                        static_cast<LONG>(thumbY + thumbH)
+                    };
+                    props.fVisible = TRUE;
+                    props.opacity = 255;
+
+                    DwmUpdateThumbnailProperties(card.hThumbnail, &props);
+                }
             }
         }
     }
@@ -419,31 +458,47 @@ namespace Aqua {
 
         float cx = static_cast<float>(m_screenWidth) * 0.5f;
 
-        // 2. macOS Top Spaces Bar
-        float spacesW = 280.0f * m_dpiScale;
-        float spacesH = 36.0f * m_dpiScale;
-        float spacesY = 24.0f * m_dpiScale;
-        D2D1_ROUNDED_RECT spacesPill = D2D1::RoundedRect(
-            D2D1::RectF(cx - spacesW * 0.5f, spacesY, cx + spacesW * 0.5f, spacesY + spacesH),
-            spacesH * 0.5f, spacesH * 0.5f
-        );
+        // 2. macOS Top Spaces Bar on each monitor
+        auto monitors = MonitorManager::GetMonitors();
+        if (monitors.empty()) {
+            MonitorData defMon;
+            defMon.rcMonitor = { m_vx, m_vy, m_vx + m_screenWidth, m_vy + m_screenHeight };
+            monitors.push_back(defMon);
+        }
 
-        ctx->FillRoundedRectangle(spacesPill, m_brushCardBg.Get());
-        ctx->DrawRoundedRectangle(spacesPill, m_brushBorder.Get(), 1.0f);
+        for (size_t m = 0; m < monitors.size(); ++m) {
+            const auto& mon = monitors[m];
+            float monLocalX = static_cast<float>(mon.rcMonitor.left - m_vx);
+            float monLocalW = static_cast<float>(mon.rcMonitor.right - mon.rcMonitor.left);
+            float monLocalY = static_cast<float>(mon.rcMonitor.top - m_vy);
+            float cx = monLocalX + monLocalW * 0.5f;
 
-        // Active Space Badge
-        float badgeW = 120.0f * m_dpiScale;
-        float badgeH = 26.0f * m_dpiScale;
-        D2D1_ROUNDED_RECT activeBadge = D2D1::RoundedRect(
-            D2D1::RectF(cx - badgeW * 0.5f, spacesY + (spacesH - badgeH) * 0.5f, cx + badgeW * 0.5f, spacesY + (spacesH + badgeH) * 0.5f),
-            badgeH * 0.5f, badgeH * 0.5f
-        );
-        ctx->FillRoundedRectangle(activeBadge, m_brushCardBgHover.Get());
-        ctx->DrawRoundedRectangle(activeBadge, m_brushBorder.Get(), 1.0f);
+            float spacesW = 280.0f * m_dpiScale;
+            float spacesH = 36.0f * m_dpiScale;
+            float spacesY = monLocalY + 24.0f * m_dpiScale;
+            D2D1_ROUNDED_RECT spacesPill = D2D1::RoundedRect(
+                D2D1::RectF(cx - spacesW * 0.5f, spacesY, cx + spacesW * 0.5f, spacesY + spacesH),
+                spacesH * 0.5f, spacesH * 0.5f
+            );
 
-        if (m_formatHeader) {
-            D2D1_RECT_F textRect = activeBadge.rect;
-            ctx->DrawTextW(L"Desktop 1", 9, m_formatHeader.Get(), textRect, m_brushTextPrimary.Get());
+            ctx->FillRoundedRectangle(spacesPill, m_brushCardBg.Get());
+            ctx->DrawRoundedRectangle(spacesPill, m_brushBorder.Get(), 1.0f);
+
+            // Active Space Badge
+            float badgeW = 120.0f * m_dpiScale;
+            float badgeH = 26.0f * m_dpiScale;
+            D2D1_ROUNDED_RECT activeBadge = D2D1::RoundedRect(
+                D2D1::RectF(cx - badgeW * 0.5f, spacesY + (spacesH - badgeH) * 0.5f, cx + badgeW * 0.5f, spacesY + (spacesH + badgeH) * 0.5f),
+                badgeH * 0.5f, badgeH * 0.5f
+            );
+            ctx->FillRoundedRectangle(activeBadge, m_brushCardBgHover.Get());
+            ctx->DrawRoundedRectangle(activeBadge, m_brushBorder.Get(), 1.0f);
+
+            if (m_formatHeader) {
+                wchar_t deskLabel[32];
+                swprintf_s(deskLabel, L"Display %zu", m + 1);
+                ctx->DrawTextW(deskLabel, static_cast<UINT32>(wcslen(deskLabel)), m_formatHeader.Get(), activeBadge.rect, m_brushTextPrimary.Get());
+            }
         }
 
         // 3. Render Window Cards

@@ -76,12 +76,33 @@ namespace Aqua {
         }
     }
 
-    RECT WindowTiler::GetZoneRect(SnapZone zone) const {
+    RECT WindowTiler::GetZoneRect(SnapZone zone, HMONITOR hMon) const {
+        if (!hMon) {
+            HWND target = m_draggedHwnd ? m_draggedHwnd : GetForegroundWindow();
+            if (target && IsWindow(target)) {
+                hMon = MonitorFromWindow(target, MONITOR_DEFAULTTONEAREST);
+            } else {
+                POINT pt;
+                GetCursorPos(&pt);
+                hMon = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+            }
+        }
+
+        MONITORINFO mi = { sizeof(MONITORINFO) };
+        if (!hMon || !GetMonitorInfoW(hMon, &mi)) {
+            mi.rcMonitor = { 0, 0, m_screenWidth, m_screenHeight };
+        }
+
+        int monX = mi.rcMonitor.left;
+        int monY = mi.rcMonitor.top;
+        int monW = mi.rcMonitor.right - mi.rcMonitor.left;
+        int monH = mi.rcMonitor.bottom - mi.rcMonitor.top;
+
         int margin = static_cast<int>(6.0f * m_dpiScale);
-        int topY = m_topBarHeight + margin;
+        int topY = monY + m_topBarHeight + margin;
         int bottomMargin = static_cast<int>(10.0f * m_dpiScale);
-        int availW = m_screenWidth - (margin * 2);
-        int availH = m_screenHeight - topY - bottomMargin;
+        int availW = monW - (margin * 2);
+        int availH = monH - (m_topBarHeight + margin) - bottomMargin;
 
         int halfW = (availW - margin) / 2;
         int halfH = (availH - margin) / 2;
@@ -90,36 +111,36 @@ namespace Aqua {
 
         switch (zone) {
         case SnapZone::LeftHalf:
-            r = { margin, topY, margin + halfW, topY + availH };
+            r = { monX + margin, topY, monX + margin + halfW, topY + availH };
             break;
         case SnapZone::RightHalf:
-            r = { margin + halfW + margin, topY, margin + halfW + margin + halfW, topY + availH };
+            r = { monX + margin + halfW + margin, topY, monX + monW - margin, topY + availH };
             break;
         case SnapZone::TopHalf:
-            r = { margin, topY, margin + availW, topY + halfH };
+            r = { monX + margin, topY, monX + monW - margin, topY + halfH };
             break;
         case SnapZone::BottomHalf:
-            r = { margin, topY + halfH + margin, margin + availW, topY + halfH + margin + halfH };
+            r = { monX + margin, topY + halfH + margin, monX + monW - margin, topY + availH };
             break;
         case SnapZone::TopLeftQuarter:
-            r = { margin, topY, margin + halfW, topY + halfH };
+            r = { monX + margin, topY, monX + margin + halfW, topY + halfH };
             break;
         case SnapZone::TopRightQuarter:
-            r = { margin + halfW + margin, topY, margin + halfW + margin + halfW, topY + halfH };
+            r = { monX + margin + halfW + margin, topY, monX + monW - margin, topY + halfH };
             break;
         case SnapZone::BottomLeftQuarter:
-            r = { margin, topY + halfH + margin, margin + halfW, topY + halfH + margin + halfH };
+            r = { monX + margin, topY + halfH + margin, monX + margin + halfW, topY + availH };
             break;
         case SnapZone::BottomRightQuarter:
-            r = { margin + halfW + margin, topY + halfH + margin, margin + halfW + margin + halfW, topY + halfH + margin + halfH };
+            r = { monX + margin + halfW + margin, topY + halfH + margin, monX + monW - margin, topY + availH };
             break;
         case SnapZone::Maximize:
-            r = { margin, topY, margin + availW, topY + availH };
+            r = { monX + margin, topY, monX + monW - margin, topY + availH };
             break;
         case SnapZone::Center: {
             int w = static_cast<int>(availW * 0.72f);
             int h = static_cast<int>(availH * 0.76f);
-            int x = margin + (availW - w) / 2;
+            int x = monX + margin + (availW - w) / 2;
             int y = topY + (availH - h) / 2;
             r = { x, y, x + w, y + h };
             break;
@@ -159,7 +180,8 @@ namespace Aqua {
             ShowWindow(hwnd, SW_RESTORE);
         }
 
-        RECT r = GetZoneRect(zone);
+        HMONITOR hMon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+        RECT r = GetZoneRect(zone, hMon);
         if (r.right <= r.left || r.bottom <= r.top) return;
 
         SetWindowPos(
@@ -221,21 +243,27 @@ namespace Aqua {
     }
 
     void WindowTiler::UpdateDrag(POINT pt) {
+        HMONITOR hMon = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+        MONITORINFO mi = { sizeof(MONITORINFO) };
+        if (!hMon || !GetMonitorInfoW(hMon, &mi)) {
+            mi.rcMonitor = { 0, 0, m_screenWidth, m_screenHeight };
+        }
+
         float edgeThreshold = 18.0f * m_dpiScale;
         float cornerThreshold = 45.0f * m_dpiScale;
 
         SnapZone zone = SnapZone::None;
 
-        float topEdge = static_cast<float>(m_topBarHeight) + edgeThreshold;
-        float botEdge = static_cast<float>(m_screenHeight) - edgeThreshold;
-        float leftEdge = edgeThreshold;
-        float rightEdge = static_cast<float>(m_screenWidth) - edgeThreshold;
+        float topEdge = static_cast<float>(mi.rcMonitor.top + m_topBarHeight) + edgeThreshold;
+        float botEdge = static_cast<float>(mi.rcMonitor.bottom) - edgeThreshold;
+        float leftEdge = static_cast<float>(mi.rcMonitor.left) + edgeThreshold;
+        float rightEdge = static_cast<float>(mi.rcMonitor.right) - edgeThreshold;
 
         // Top Edge & Corners
         if (pt.y <= topEdge) {
-            if (pt.x <= cornerThreshold) {
+            if (pt.x <= mi.rcMonitor.left + cornerThreshold) {
                 zone = SnapZone::TopLeftQuarter;
-            } else if (pt.x >= m_screenWidth - cornerThreshold) {
+            } else if (pt.x >= mi.rcMonitor.right - cornerThreshold) {
                 zone = SnapZone::TopRightQuarter;
             } else {
                 zone = SnapZone::Maximize;
@@ -243,9 +271,9 @@ namespace Aqua {
         }
         // Bottom Edge & Corners
         else if (pt.y >= botEdge) {
-            if (pt.x <= cornerThreshold) {
+            if (pt.x <= mi.rcMonitor.left + cornerThreshold) {
                 zone = SnapZone::BottomLeftQuarter;
-            } else if (pt.x >= m_screenWidth - cornerThreshold) {
+            } else if (pt.x >= mi.rcMonitor.right - cornerThreshold) {
                 zone = SnapZone::BottomRightQuarter;
             } else {
                 zone = SnapZone::BottomHalf;
@@ -283,25 +311,29 @@ namespace Aqua {
     }
 
     void WindowTiler::ShowPreview(SnapZone zone) {
-        RECT r = GetZoneRect(zone);
-        m_destRect = D2D1::RectF(
-            static_cast<float>(r.left),
-            static_cast<float>(r.top),
-            static_cast<float>(r.right),
-            static_cast<float>(r.bottom)
-        );
+        POINT pt;
+        GetCursorPos(&pt);
+        HMONITOR hMon = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+        RECT r = GetZoneRect(zone, hMon);
+        int w = r.right - r.left;
+        int h = r.bottom - r.top;
+        if (w <= 0 || h <= 0) return;
+
+        SetWindowPos(m_previewHwnd, HWND_TOPMOST, r.left, r.top, w, h, SWP_NOACTIVATE | SWP_SHOWWINDOW);
+        m_surface.Resize(w, h);
+
+        m_destRect = D2D1::RectF(0.0f, 0.0f, static_cast<float>(w), static_cast<float>(h));
 
         if (!m_previewVisible) {
             // Start from slightly inset rect for spring scale-in effect
             float inset = 20.0f * m_dpiScale;
             m_animRect = D2D1::RectF(
-                m_destRect.left + inset,
-                m_destRect.top + inset,
-                m_destRect.right - inset,
-                m_destRect.bottom - inset
+                inset,
+                inset,
+                static_cast<float>(w) - inset,
+                static_cast<float>(h) - inset
             );
             m_previewVisible = true;
-            ShowWindow(m_previewHwnd, SW_SHOWNOACTIVATE);
             SetTimer(m_previewHwnd, TIMER_ANIM, 16, nullptr);
         }
 

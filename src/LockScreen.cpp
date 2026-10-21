@@ -19,8 +19,17 @@ namespace Aqua {
     }
 
     bool LockScreen::Initialize(HINSTANCE hInstance, int screenWidth, int screenHeight) {
-        m_screenWidth = screenWidth;
-        m_screenHeight = screenHeight;
+        int vx = GetSystemMetrics(SM_XVIRTUALSCREEN);
+        int vy = GetSystemMetrics(SM_YVIRTUALSCREEN);
+        int vw = GetSystemMetrics(SM_CXVIRTUALSCREEN);
+        int vh = GetSystemMetrics(SM_CYVIRTUALSCREEN);
+        if (vw <= 0) vw = screenWidth;
+        if (vh <= 0) vh = screenHeight;
+
+        m_vx = vx;
+        m_vy = vy;
+        m_screenWidth = vw;
+        m_screenHeight = vh;
 
         WNDCLASSEXW wc = { sizeof(WNDCLASSEXW) };
         wc.lpfnWndProc = LockScreen::WndProc;
@@ -34,7 +43,7 @@ namespace Aqua {
             LOCK_SCREEN_CLASS,
             L"AquaOS Lock Screen",
             WS_POPUP,
-            0, 0, m_screenWidth, m_screenHeight,
+            m_vx, m_vy, m_screenWidth, m_screenHeight,
             nullptr, nullptr, hInstance, this
         );
 
@@ -163,6 +172,8 @@ namespace Aqua {
         ctx->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.35f), &m_brushInputBorder);
         ctx->CreateSolidColorBrush(D2D1::ColorF(0.0f, 0.48f, 1.0f, 1.0f), &m_brushAccent);
         ctx->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.22f), &m_brushAvatarPlate);
+        ctx->CreateSolidColorBrush(D2D1::ColorF(0.24f, 0.10f, 0.40f, 0.30f), &m_brushNebula);
+        ctx->CreateSolidColorBrush(D2D1::ColorF(0.12f, 0.22f, 0.45f, 0.25f), &m_brushHorizon);
 
         return true;
     }
@@ -258,7 +269,11 @@ namespace Aqua {
 
         float w = static_cast<float>(m_screenWidth);
         float h = static_cast<float>(m_screenHeight);
-        float cx = w * 0.5f;
+
+        // Center interactive lock UI on primary monitor within virtual desktop
+        float pmX = static_cast<float>(-m_vx);
+        float pmW = static_cast<float>(GetSystemMetrics(SM_CXSCREEN));
+        float cx = pmX + pmW * 0.5f;
 
         // 1. Dynamic Atmospheric Background (Sonoma Aerial Night Mesh)
         ctx->Clear(D2D1::ColorF(0.05f, 0.07f, 0.11f, m_fadeProgress));
@@ -268,14 +283,12 @@ namespace Aqua {
         float wave2 = std::cos(m_animTime * 0.3f) * 30.0f;
 
         D2D1_ELLIPSE glow1 = D2D1::Ellipse(D2D1::Point2F(cx + wave1, h * 0.40f + wave2), w * 0.45f, h * 0.35f);
-        ComPtr<ID2D1SolidColorBrush> nebulaBrush;
-        ctx->CreateSolidColorBrush(D2D1::ColorF(0.24f, 0.10f, 0.40f, 0.30f * m_fadeProgress), &nebulaBrush);
-        ctx->FillEllipse(glow1, nebulaBrush.Get());
+        m_brushNebula->SetColor(D2D1::ColorF(0.24f, 0.10f, 0.40f, 0.30f * m_fadeProgress));
+        ctx->FillEllipse(glow1, m_brushNebula.Get());
 
         D2D1_ELLIPSE glow2 = D2D1::Ellipse(D2D1::Point2F(cx - wave2, h * 0.65f), w * 0.50f, h * 0.28f);
-        ComPtr<ID2D1SolidColorBrush> horizonBrush;
-        ctx->CreateSolidColorBrush(D2D1::ColorF(0.12f, 0.22f, 0.45f, 0.25f * m_fadeProgress), &horizonBrush);
-        ctx->FillEllipse(glow2, horizonBrush.Get());
+        m_brushHorizon->SetColor(D2D1::ColorF(0.12f, 0.22f, 0.45f, 0.25f * m_fadeProgress));
+        ctx->FillEllipse(glow2, m_brushHorizon.Get());
 
         // 2. Giant Centered Clock & Date
         SYSTEMTIME st = {};
@@ -290,12 +303,12 @@ namespace Aqua {
         swprintf_s(timeBuf, L"%02d:%02d", st.wHour, st.wMinute);
 
         float clockY = h * 0.16f;
-        D2D1_RECT_F dateRect = D2D1::RectF(0, clockY, w, clockY + 28.0f * m_dpiScale);
+        D2D1_RECT_F dateRect = D2D1::RectF(pmX, clockY, pmX + pmW, clockY + 28.0f * m_dpiScale);
         if (m_formatDate) {
             ctx->DrawTextW(dateBuf, static_cast<UINT32>(wcslen(dateBuf)), m_formatDate.Get(), dateRect, m_brushWhiteTrans.Get());
         }
 
-        D2D1_RECT_F clockRect = D2D1::RectF(0, clockY + 30.0f * m_dpiScale, w, clockY + 115.0f * m_dpiScale);
+        D2D1_RECT_F clockRect = D2D1::RectF(pmX, clockY + 30.0f * m_dpiScale, pmX + pmW, clockY + 115.0f * m_dpiScale);
         if (m_formatClock) {
             ctx->DrawTextW(timeBuf, static_cast<UINT32>(wcslen(timeBuf)), m_formatClock.Get(), clockRect, m_brushWhite.Get());
         }
@@ -343,10 +356,8 @@ namespace Aqua {
         if (!m_passwordInput.empty()) {
             ctx->FillEllipse(D2D1::Ellipse(D2D1::Point2F(submitCx, submitCy), submitR, submitR), m_brushWhite.Get());
             D2D1_RECT_F arrowRect = D2D1::RectF(submitCx - submitR, submitCy - submitR, submitCx + submitR, submitCy + submitR);
-            ComPtr<ID2D1SolidColorBrush> blackBrush;
-            ctx->CreateSolidColorBrush(D2D1::ColorF(0.1f, 0.1f, 0.1f, 1.0f), &blackBrush);
             if (m_formatAction) {
-                ctx->DrawTextW(L"➔", 1, m_formatAction.Get(), arrowRect, blackBrush.Get());
+                ctx->DrawTextW(L"➔", 1, m_formatAction.Get(), arrowRect, m_brushBg.Get());
             }
         }
 

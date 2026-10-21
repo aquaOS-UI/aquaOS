@@ -47,6 +47,8 @@ namespace Aqua {
         void Render();
 
         HWND m_hwnd = nullptr;
+        int m_vx = 0;
+        int m_vy = 0;
         int m_screenWidth = 0;
         int m_screenHeight = 0;
         float m_dpiScale = 1.0f;

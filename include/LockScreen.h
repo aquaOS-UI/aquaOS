@@ -36,6 +36,8 @@ namespace Aqua {
         HWND m_hwnd = nullptr;
         DCompSurface m_surface;
 
+        int m_vx = 0;
+        int m_vy = 0;
         int m_screenWidth = 0;
         int m_screenHeight = 0;
         float m_dpiScale = 1.0f;
@@ -80,6 +82,8 @@ namespace Aqua {
         ComPtr<ID2D1SolidColorBrush> m_brushInputBorder;
         ComPtr<ID2D1SolidColorBrush> m_brushAccent;
         ComPtr<ID2D1SolidColorBrush> m_brushAvatarPlate;
+        ComPtr<ID2D1SolidColorBrush> m_brushNebula;
+        ComPtr<ID2D1SolidColorBrush> m_brushHorizon;
 
         static constexpr UINT_PTR TIMER_ANIM = 401;
     };

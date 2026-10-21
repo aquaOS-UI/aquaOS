@@ -89,5 +89,114 @@ namespace Aqua {
         }
     };
 
+    struct MonitorData {
+        HMONITOR hMonitor = nullptr;
+        RECT rcMonitor = {};
+        RECT rcWork = {};
+        bool isPrimary = false;
+        float dpiScale = 1.0f;
+        std::wstring deviceName;
+    };
+
+    class MonitorManager {
+    public:
+        static std::vector<MonitorData> GetMonitors() {
+            std::vector<MonitorData> list;
+            EnumDisplayMonitors(nullptr, nullptr, [](HMONITOR hMon, HDC, LPRECT, LPARAM lParam) -> BOOL {
+                auto* pList = reinterpret_cast<std::vector<MonitorData>*>(lParam);
+                MONITORINFOEXW mi = {};
+                mi.cbSize = sizeof(mi);
+                if (GetMonitorInfoW(hMon, &mi)) {
+                    MonitorData md;
+                    md.hMonitor = hMon;
+                    md.rcMonitor = mi.rcMonitor;
+                    md.rcWork = mi.rcWork;
+                    md.isPrimary = (mi.dwFlags & MONITORINFOF_PRIMARY) != 0;
+                    md.deviceName = mi.szDevice;
+                    md.dpiScale = 1.0f;
+
+                    typedef HRESULT(WINAPI* GetDpiForMonitorFn)(HMONITOR, int, UINT*, UINT*);
+                    static auto pfnGetDpi = (GetDpiForMonitorFn)GetProcAddress(GetModuleHandleW(L"shcore.dll"), "GetDpiForMonitor");
+                    UINT dpiX = 96, dpiY = 96;
+                    if (pfnGetDpi && SUCCEEDED(pfnGetDpi(hMon, 0, &dpiX, &dpiY))) {
+                        md.dpiScale = static_cast<float>(dpiX) / 96.0f;
+                    }
+                    pList->push_back(md);
+                }
+                return TRUE;
+            }, reinterpret_cast<LPARAM>(&list));
+            return list;
+        }
+
+        static MonitorData GetPrimaryMonitor() {
+            auto monitors = GetMonitors();
+            for (const auto& m : monitors) {
+                if (m.isPrimary) return m;
+            }
+            if (!monitors.empty()) return monitors.front();
+            MonitorData fallback;
+            fallback.rcMonitor = { 0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN) };
+            fallback.rcWork = fallback.rcMonitor;
+            fallback.isPrimary = true;
+            return fallback;
+        }
+
+        static MonitorData GetMonitorForPoint(POINT pt) {
+            HMONITOR hMon = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+            MONITORINFOEXW mi = {};
+            mi.cbSize = sizeof(mi);
+            if (hMon && GetMonitorInfoW(hMon, &mi)) {
+                MonitorData md;
+                md.hMonitor = hMon;
+                md.rcMonitor = mi.rcMonitor;
+                md.rcWork = mi.rcWork;
+                md.isPrimary = (mi.dwFlags & MONITORINFOF_PRIMARY) != 0;
+                md.deviceName = mi.szDevice;
+                md.dpiScale = 1.0f;
+                typedef HRESULT(WINAPI* GetDpiForMonitorFn)(HMONITOR, int, UINT*, UINT*);
+                static auto pfnGetDpi = (GetDpiForMonitorFn)GetProcAddress(GetModuleHandleW(L"shcore.dll"), "GetDpiForMonitor");
+                UINT dpiX = 96, dpiY = 96;
+                if (pfnGetDpi && SUCCEEDED(pfnGetDpi(hMon, 0, &dpiX, &dpiY))) {
+                    md.dpiScale = static_cast<float>(dpiX) / 96.0f;
+                }
+                return md;
+            }
+            return GetPrimaryMonitor();
+        }
+
+        static MonitorData GetMonitorForWindow(HWND hwnd) {
+            if (!hwnd || !IsWindow(hwnd)) return GetPrimaryMonitor();
+            HMONITOR hMon = MonitorFromWindow(hwnd, MONITOR_DEFAULTTONEAREST);
+            MONITORINFOEXW mi = {};
+            mi.cbSize = sizeof(mi);
+            if (hMon && GetMonitorInfoW(hMon, &mi)) {
+                MonitorData md;
+                md.hMonitor = hMon;
+                md.rcMonitor = mi.rcMonitor;
+                md.rcWork = mi.rcWork;
+                md.isPrimary = (mi.dwFlags & MONITORINFOF_PRIMARY) != 0;
+                md.deviceName = mi.szDevice;
+                md.dpiScale = 1.0f;
+                typedef HRESULT(WINAPI* GetDpiForMonitorFn)(HMONITOR, int, UINT*, UINT*);
+                static auto pfnGetDpi = (GetDpiForMonitorFn)GetProcAddress(GetModuleHandleW(L"shcore.dll"), "GetDpiForMonitor");
+                UINT dpiX = 96, dpiY = 96;
+                if (pfnGetDpi && SUCCEEDED(pfnGetDpi(hMon, 0, &dpiX, &dpiY))) {
+                    md.dpiScale = static_cast<float>(dpiX) / 96.0f;
+                }
+                return md;
+            }
+            return GetPrimaryMonitor();
+        }
+
+        static RECT GetVirtualScreenRect() {
+            return RECT{
+                GetSystemMetrics(SM_XVIRTUALSCREEN),
+                GetSystemMetrics(SM_YVIRTUALSCREEN),
+                GetSystemMetrics(SM_XVIRTUALSCREEN) + GetSystemMetrics(SM_CXVIRTUALSCREEN),
+                GetSystemMetrics(SM_YVIRTUALSCREEN) + GetSystemMetrics(SM_CYVIRTUALSCREEN)
+            };
+        }
+    };
+
 }
 

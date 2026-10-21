@@ -30,7 +30,7 @@ namespace Aqua {
         void SnapWindow(HWND hwnd, SnapZone zone);
 
         // Compute target bounding box for a snap zone
-        RECT GetZoneRect(SnapZone zone) const;
+        RECT GetZoneRect(SnapZone zone, HMONITOR hMon = nullptr) const;
 
     private:
         WindowTiler();

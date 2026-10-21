@@ -170,8 +170,19 @@ namespace Aqua {
         m_selectedIndex = 0;
         UpdateSearchResults();
 
-        int posX = (m_screenWidth - m_width) / 2;
-        int posY = static_cast<int>(m_screenHeight * 0.22);
+        // Position centered horizontally on the active monitor under cursor
+        POINT pt;
+        GetCursorPos(&pt);
+        HMONITOR hMon = MonitorFromPoint(pt, MONITOR_DEFAULTTONEAREST);
+        MONITORINFO mi = { sizeof(MONITORINFO) };
+        if (!hMon || !GetMonitorInfoW(hMon, &mi)) {
+            mi.rcMonitor = { 0, 0, m_screenWidth, m_screenHeight };
+        }
+        int monW = mi.rcMonitor.right - mi.rcMonitor.left;
+        int monH = mi.rcMonitor.bottom - mi.rcMonitor.top;
+
+        int posX = mi.rcMonitor.left + (monW - m_width) / 2;
+        int posY = mi.rcMonitor.top + static_cast<int>(monH * 0.22);
         SetWindowPos(m_hwnd, HWND_TOPMOST, posX, posY, m_width, m_height, SWP_SHOWWINDOW);
 
         SetForegroundWindow(m_hwnd);
@@ -264,9 +275,16 @@ namespace Aqua {
 
         if (targetHeight != m_height) {
             m_height = targetHeight;
-            int posX = (m_screenWidth - m_width) / 2;
-            int posY = static_cast<int>(m_screenHeight * 0.22);
-            SetWindowPos(m_hwnd, HWND_TOPMOST, posX, posY, m_width, m_height, SWP_NOACTIVATE | SWP_NOMOVE);
+            HMONITOR hMon = MonitorFromWindow(m_hwnd, MONITOR_DEFAULTTONEAREST);
+            MONITORINFO mi = { sizeof(MONITORINFO) };
+            if (!hMon || !GetMonitorInfoW(hMon, &mi)) {
+                mi.rcMonitor = { 0, 0, m_screenWidth, m_screenHeight };
+            }
+            int monW = mi.rcMonitor.right - mi.rcMonitor.left;
+            int monH = mi.rcMonitor.bottom - mi.rcMonitor.top;
+            int posX = mi.rcMonitor.left + (monW - m_width) / 2;
+            int posY = mi.rcMonitor.top + static_cast<int>(monH * 0.22);
+            SetWindowPos(m_hwnd, HWND_TOPMOST, posX, posY, m_width, m_height, SWP_NOACTIVATE);
             m_surface.Resize(m_width, m_height);
         }
     }
