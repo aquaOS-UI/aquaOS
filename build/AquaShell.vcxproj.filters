@@ -25,6 +25,9 @@
     <ClCompile Include="D:\Projects\workspace\operating-system\src\IconManager.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="D:\Projects\workspace\operating-system\src\MissionControl.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="D:\Projects\workspace\operating-system\include\Common.h">
@@ -52,6 +55,9 @@
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="D:\Projects\workspace\operating-system\include\IconManager.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="D:\Projects\workspace\operating-system\include\MissionControl.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

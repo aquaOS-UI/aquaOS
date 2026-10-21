@@ -557,14 +557,27 @@ namespace Aqua {
                         AppendMenuW(hMenu, MF_STRING, 3013, L"Cut\tCtrl+X");
                         AppendMenuW(hMenu, MF_STRING, 3014, L"Copy\tCtrl+C");
                         AppendMenuW(hMenu, MF_STRING, 3015, L"Paste\tCtrl+V");
+                    } else if (item.text == L"View") {
+                        AppendMenuW(hMenu, MF_STRING, 3031, L"Mission Control\tF3");
+                        AppendMenuW(hMenu, MF_STRING, 3032, L"Spotlight Search\tAlt+Space");
+                        AppendMenuW(hMenu, MF_SEPARATOR, 0, nullptr);
+                        AppendMenuW(hMenu, MF_STRING, 3033, L"Control Center");
                     } else {
                         AppendMenuW(hMenu, MF_STRING, 3020, (item.text + L" Actions").c_str());
                     }
 
                     POINT pt = { static_cast<LONG>(item.bounds.left), static_cast<LONG>(m_height) };
                     ClientToScreen(m_hwnd, &pt);
-                    TrackPopupMenu(hMenu, TPM_LEFTALIGN | TPM_TOPALIGN, pt.x, pt.y, 0, m_hwnd, nullptr);
+                    int cmd = TrackPopupMenu(hMenu, TPM_LEFTALIGN | TPM_TOPALIGN | TPM_RETURNCMD, pt.x, pt.y, 0, m_hwnd, nullptr);
                     DestroyMenu(hMenu);
+
+                    if (cmd == 3031) {
+                        if (m_onMissionControl) m_onMissionControl();
+                    } else if (cmd == 3032) {
+                        if (m_onSpotlight) m_onSpotlight();
+                    } else if (cmd == 3033) {
+                        if (m_onControlCenter) m_onControlCenter();
+                    }
                     return 0;
                 }
             }

@@ -8,8 +8,7 @@ int main() {
     }
 
     HWND hTray = FindWindowW(L"Shell_TrayWnd", nullptr);
-    if (!hTray) {
-        // Fallback: enum windows on default desktop
+    if (!hTray && hDesk) {
         EnumDesktopWindows(hDesk, [](HWND hwnd, LPARAM lParam) -> BOOL {
             wchar_t cls[64] = {};
             GetClassNameW(hwnd, cls, 64);
@@ -22,12 +21,8 @@ int main() {
     }
 
     if (hTray) {
-        std::cout << "Found Shell_TrayWnd: " << (void*)hTray << std::endl;
         ShowWindow(hTray, SW_SHOW);
         EnableWindow(hTray, TRUE);
-        std::cout << "ShowWindow SW_SHOW called. IsVisible: " << IsWindowVisible(hTray) << std::endl;
-    } else {
-        std::cout << "Shell_TrayWnd still not found!" << std::endl;
     }
 
     // Secondary taskbars
@@ -42,21 +37,20 @@ int main() {
         ShowWindow(hStart, SW_SHOW);
     }
 
-    // Reset work area to full monitor dimensions minus default taskbar height (or query monitor info)
+    // Restore Work Area
     RECT rcScreen = { 0, 0, GetSystemMetrics(SM_CXSCREEN), GetSystemMetrics(SM_CYSCREEN) };
     if (hTray) {
         RECT rcTray = {};
         GetWindowRect(hTray, &rcTray);
         if (rcTray.bottom - rcTray.top > 0) {
-            // Taskbar is typically at bottom
             rcScreen.bottom = rcTray.top;
         }
     }
     SystemParametersInfoW(SPI_SETWORKAREA, 0, &rcScreen, SPIF_SENDCHANGE);
-    std::cout << "Work area restored to: [" << rcScreen.left << ", " << rcScreen.top << ", " << rcScreen.right << ", " << rcScreen.bottom << "]" << std::endl;
 
     if (hDesk) {
         CloseDesktop(hDesk);
     }
     return 0;
 }
+

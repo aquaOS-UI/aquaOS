@@ -54,6 +54,7 @@ namespace Aqua {
         HWND GetHwnd() const { return m_hwnd; }
 
         void SetSpotlightCallback(std::function<void()> callback) { m_onSpotlight = callback; }
+        void SetMissionControlCallback(std::function<void()> callback) { m_onMissionControl = callback; }
 
         void UpdatePhysics();
         void Render();
@@ -95,6 +96,7 @@ namespace Aqua {
 
         std::vector<DockItem> m_items;
         std::function<void()> m_onSpotlight;
+        std::function<void()> m_onMissionControl;
 
         // DirectWrite Formats
         ComPtr<IDWriteTextFormat> m_tooltipFormat;

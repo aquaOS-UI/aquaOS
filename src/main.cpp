@@ -5,6 +5,7 @@
 #include "Spotlight.h"
 #include "ControlCenter.h"
 #include "TaskbarController.h"
+#include "MissionControl.h"
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow) {
     // 1. Single Instance Guard
@@ -52,6 +53,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
     Aqua::Dock dock;
     Aqua::Spotlight spotlight;
     Aqua::ControlCenter controlCenter;
+    Aqua::MissionControl missionControl;
 
     if (!topBar.Create(hInstance, screenWidth, 32)) {
         MessageBoxW(nullptr, L"Failed to create AquaOS TopBar.", L"AquaOS Error", MB_OK | MB_ICONERROR);
@@ -73,20 +75,40 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
         return 1;
     }
 
+    if (!missionControl.Create(hInstance, screenWidth, screenHeight)) {
+        MessageBoxW(nullptr, L"Failed to create AquaOS Mission Control.", L"AquaOS Error", MB_OK | MB_ICONERROR);
+        return 1;
+    }
+
     // 6. Connect Inter-component Callbacks
     topBar.SetSpotlightCallback([&]() {
         controlCenter.Hide();
+        missionControl.Hide();
         spotlight.Toggle();
     });
 
     topBar.SetControlCenterCallback([&]() {
         spotlight.Hide();
+        missionControl.Hide();
         controlCenter.Toggle();
+    });
+
+    topBar.SetMissionControlCallback([&]() {
+        spotlight.Hide();
+        controlCenter.Hide();
+        missionControl.Toggle();
     });
 
     dock.SetSpotlightCallback([&]() {
         controlCenter.Hide();
+        missionControl.Hide();
         spotlight.Toggle();
+    });
+
+    dock.SetMissionControlCallback([&]() {
+        spotlight.Hide();
+        controlCenter.Hide();
+        missionControl.Toggle();
     });
 
     // 7. Register Global Hotkeys:
@@ -94,6 +116,8 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
     RegisterHotKey(nullptr, 100, MOD_ALT | MOD_NOREPEAT, VK_SPACE);
     // Ctrl + Alt + T to toggle Windows Taskbar visibility anytime
     RegisterHotKey(nullptr, 101, MOD_CONTROL | MOD_ALT | MOD_NOREPEAT, 'T');
+    // F3 for macOS Mission Control Window Grid
+    RegisterHotKey(nullptr, 102, 0, VK_F3);
 
     // 8. Suppress Windows Taskbar & Adjust Work Area for macOS Shell Experience
     Aqua::TaskbarController::Instance().SuppressTaskbar();
@@ -108,10 +132,17 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
     while (GetMessageW(&msg, nullptr, 0, 0)) {
         if (msg.message == WM_HOTKEY) {
             if (msg.wParam == 100) {
+                controlCenter.Hide();
+                missionControl.Hide();
                 spotlight.Toggle();
                 continue;
             } else if (msg.wParam == 101) {
                 Aqua::TaskbarController::Instance().ToggleTaskbar();
+                continue;
+            } else if (msg.wParam == 102) {
+                controlCenter.Hide();
+                spotlight.Hide();
+                missionControl.Toggle();
                 continue;
             }
         }
@@ -123,6 +154,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
     // 11. Clean Shutdown & Restore System State
     UnregisterHotKey(nullptr, 100);
     UnregisterHotKey(nullptr, 101);
+    UnregisterHotKey(nullptr, 102);
     Aqua::TaskbarController::Instance().RestoreTaskbar();
     Aqua::DCompEngine::Instance().Shutdown();
     CoUninitialize();

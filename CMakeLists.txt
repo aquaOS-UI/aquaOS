@@ -15,6 +15,7 @@ set(SOURCES
     src/ControlCenter.cpp
     src/TaskbarController.cpp
     src/IconManager.cpp
+    src/MissionControl.cpp
 )
 
 set(HEADERS
@@ -27,6 +28,7 @@ set(HEADERS
     include/ControlCenter.h
     include/TaskbarController.h
     include/IconManager.h
+    include/MissionControl.h
 )
 
 add_executable(AquaShell WIN32 ${SOURCES} ${HEADERS})

@@ -1,5 +1,6 @@
 #include "Dock.h"
 #include "IconManager.h"
+#include "TaskbarController.h"
 #include <cmath>
 #include <fstream>
 #include <sstream>
@@ -589,7 +590,8 @@ namespace Aqua {
 
                 // Action
                 if (item.type == DockAppType::Launchpad) {
-                    if (m_onSpotlight) m_onSpotlight();
+                    if (m_onMissionControl) m_onMissionControl();
+                    else if (m_onSpotlight) m_onSpotlight();
                 } else if (!item.executePath.empty()) {
                     ShellExecuteW(
                         nullptr,
@@ -749,7 +751,8 @@ namespace Aqua {
 
         if (cmd == 5001 && pItem) {
             if (pItem->type == DockAppType::Launchpad) {
-                if (m_onSpotlight) m_onSpotlight();
+                if (m_onMissionControl) m_onMissionControl();
+                else if (m_onSpotlight) m_onSpotlight();
             } else if (!pItem->executePath.empty()) {
                 ShellExecuteW(nullptr, L"open", pItem->executePath.c_str(), pItem->executeArgs.empty() ? nullptr : pItem->executeArgs.c_str(), nullptr, SW_SHOWNORMAL);
             }

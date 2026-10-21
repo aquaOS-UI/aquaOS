@@ -24,6 +24,7 @@ namespace Aqua {
 
         void SetSpotlightCallback(std::function<void()> callback) { m_onSpotlight = callback; }
         void SetControlCenterCallback(std::function<void()> callback) { m_onControlCenter = callback; }
+        void SetMissionControlCallback(std::function<void()> callback) { m_onMissionControl = callback; }
 
         void Render();
 
@@ -65,6 +66,7 @@ namespace Aqua {
         // Callbacks
         std::function<void()> m_onSpotlight;
         std::function<void()> m_onControlCenter;
+        std::function<void()> m_onMissionControl;
 
         // DirectWrite Formats
         ComPtr<IDWriteTextFormat> m_textFormatRegular;

@@ -344,6 +344,7 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     <ClCompile Include="D:\Projects\workspace\operating-system\src\ControlCenter.cpp" />
     <ClCompile Include="D:\Projects\workspace\operating-system\src\TaskbarController.cpp" />
     <ClCompile Include="D:\Projects\workspace\operating-system\src\IconManager.cpp" />
+    <ClCompile Include="D:\Projects\workspace\operating-system\src\MissionControl.cpp" />
     <ClInclude Include="D:\Projects\workspace\operating-system\include\Common.h" />
     <ClInclude Include="D:\Projects\workspace\operating-system\include\DCompRenderer.h" />
     <ClInclude Include="D:\Projects\workspace\operating-system\include\SystemInfo.h" />
@@ -353,6 +354,7 @@ if %errorlevel% neq 0 goto :VCEnd</Command>
     <ClInclude Include="D:\Projects\workspace\operating-system\include\ControlCenter.h" />
     <ClInclude Include="D:\Projects\workspace\operating-system\include\TaskbarController.h" />
     <ClInclude Include="D:\Projects\workspace\operating-system\include\IconManager.h" />
+    <ClInclude Include="D:\Projects\workspace\operating-system\include\MissionControl.h" />
   </ItemGroup>
   <ItemGroup />
   <ItemGroup>

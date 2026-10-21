@@ -65,7 +65,18 @@ It replicates the fluid macOS desktop environment (Top Menu Bar, Parabolic Magni
 - **Direct Sound Volume Control:** Reads and updates Windows master volume in real-time via the Windows CoreAudio API (`IAudioEndpointVolume`).
 - **Display Brightness Slider:** Smooth interactive brightness control.
 
-### 5. Taskbar Suppression & Work Area Takeover (`TaskbarController`)
+### 5. macOS Mission Control / Window Grid (`MissionControl`)
+- **Global Hotkey:** Press **`F3`** (or click Launchpad in Dock or View -> Mission Control).
+- **Hardware-Accelerated DWM Live Thumbnails:** Uses Windows Desktop Window Manager (`DwmRegisterThumbnail` + `DwmUpdateThumbnailProperties`) to stream live, 60+ FPS composited thumbnails of all running application windows.
+- **Smart Adaptive Grid Layout:** Dynamically arranges open windows into optimal macOS-style columns and rows based on window aspect ratio.
+- **Spaces / Desktops Bar:** Displays top macOS Sonoma/Sequoia style "Desktop 1" spaces pill.
+- **Card Controls:**
+  - Hover over any window preview to see its glowing accent blue border and title.
+  - Hover over the top-right of a card to reveal the macOS red close button (`X`) to terminate a window directly from Mission Control.
+  - Click any card to raise, restore, and focus that application window instantly.
+  - Press `Escape` or `F3` or click the frosted backdrop to dismiss.
+
+### 6. Taskbar Suppression & Work Area Takeover (`TaskbarController`)
 - **Shell Takeover:** Automatically suppresses the Windows 10/11 taskbar (`Shell_TrayWnd`, secondary tray windows, and Start button).
 - **Work Area Reflow:** Adjusts the Windows desktop work area (`SPI_SETWORKAREA`) so maximized application windows seamlessly snap below the 32px TopBar.
 - **Toggle Anytime:** Press **`Ctrl + Alt + T`** or select **"Show/Hide Windows Taskbar"** from the Apple logo menu to toggle the Windows taskbar on or off on demand.
@@ -77,8 +88,10 @@ It replicates the fluid macOS desktop environment (Top Menu Bar, Parabolic Magni
 
 | Shortcut | Action |
 | :--- | :--- |
+| **`F3`** | Toggle macOS Mission Control (Live Window Grid) |
 | **`Alt + Space`** | Toggle macOS Spotlight Search & Calculator |
 | **`Ctrl + Alt + T`** | Toggle Windows Taskbar visibility |
+| **`Escape`** | Close Spotlight / Mission Control / Control Center |
 | **`Win + L`** | Lock Screen |
 
 ---
