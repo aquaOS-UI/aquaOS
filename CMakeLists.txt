@@ -27,12 +27,14 @@ set(CORE_HEADERS
 set(PLATFORM_SOURCES
     src/platform/IconManager.cpp
     src/platform/TaskbarController.cpp
+    src/platform/HardwareController.cpp
 )
 
 set(PLATFORM_HEADERS
     include/platform/SystemInfo.h
     include/platform/IconManager.h
     include/platform/TaskbarController.h
+    include/platform/HardwareController.h
 )
 
 set(UI_SOURCES
@@ -138,6 +140,7 @@ target_link_libraries(AquaShell PRIVATE
     comdlg32
     version
     windowsapp
+    dxva2
 )
 
 # Compiler & Performance Flags

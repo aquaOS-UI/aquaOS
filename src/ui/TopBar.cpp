@@ -5,6 +5,7 @@
 #include "LockScreen.h"
 #include "ThemeManager.h"
 #include "MediaControllerService.h"
+#include "HardwareController.h"
 #include <algorithm>
 #include <cwctype>
 
@@ -986,6 +987,10 @@ namespace Aqua {
                 AppendMenuW(hMenu, MF_STRING, 2024, L"Mission Control\tF3");
                 AppendMenuW(hMenu, MF_STRING, 2025, L"Launchpad\tF4");
                 AppendMenuW(hMenu, MF_SEPARATOR, 0, nullptr);
+                bool isAutoStart = HardwareController::Instance().IsStartupEnabled();
+                UINT autoStartFlags = MF_STRING | (isAutoStart ? MF_CHECKED : MF_UNCHECKED);
+                AppendMenuW(hMenu, autoStartFlags, 2030, L"Launch AquaOS at Windows Sign-in");
+                AppendMenuW(hMenu, MF_SEPARATOR, 0, nullptr);
                 AppendMenuW(hMenu, MF_STRING, 2004, L"Lock Screen\tCtrl+Alt+L");
                 AppendMenuW(hMenu, MF_STRING, 2005, L"Sleep");
                 AppendMenuW(hMenu, MF_STRING, 2006, L"Restart...");
@@ -1017,6 +1022,9 @@ namespace Aqua {
                     if (m_onMissionControl) m_onMissionControl();
                 } else if (cmd == 2025) {
                     if (m_onLaunchpad) m_onLaunchpad();
+                } else if (cmd == 2030) {
+                    bool current = HardwareController::Instance().IsStartupEnabled();
+                    HardwareController::Instance().SetStartupEnabled(!current);
                 } else if (cmd == 2004) {
                     LockScreen::Instance().Show();
                 } else if (cmd == 2005) {

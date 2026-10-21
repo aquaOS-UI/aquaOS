@@ -3,6 +3,7 @@
 #include "DCompRenderer.h"
 #include "AppCatalogService.h"
 #include "MediaControllerService.h"
+#include "HardwareController.h"
 #include "TopBar.h"
 #include "Dock.h"
 #include "Spotlight.h"
@@ -352,6 +353,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
     Aqua::QuickLook::Instance().Shutdown();
     Aqua::AppCatalogService::Instance().Shutdown();
     Aqua::MediaControllerService::Instance().Shutdown();
+    Aqua::HardwareController::Instance().RestoreBrightness();
     Aqua::TaskbarController::Instance().RestoreTaskbar();
     Aqua::DCompEngine::Instance().Shutdown();
     CoUninitialize();

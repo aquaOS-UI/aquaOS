@@ -3,6 +3,7 @@
 #include "SystemInfo.h"
 #include "ThemeManager.h"
 #include "MediaControllerService.h"
+#include "HardwareController.h"
 #include <algorithm>
 
 namespace Aqua {
@@ -54,8 +55,11 @@ namespace Aqua {
             return false;
         }
 
-        // Query current system volume
+        // Query current system volume & hardware states
         m_soundVolume = SystemInfo::GetMasterVolume();
+        m_displayBrightness = HardwareController::Instance().GetBrightness();
+        m_wifiEnabled = HardwareController::Instance().IsWifiEnabled();
+        m_bluetoothEnabled = HardwareController::Instance().IsBluetoothEnabled();
 
         auto& engine = DCompEngine::Instance();
         auto dwrite = engine.GetDWriteFactory();
@@ -238,6 +242,9 @@ namespace Aqua {
     void ControlCenter::Show() {
         m_visible = true;
         m_soundVolume = SystemInfo::GetMasterVolume();
+        m_displayBrightness = HardwareController::Instance().GetBrightness();
+        m_wifiEnabled = HardwareController::Instance().IsWifiEnabled();
+        m_bluetoothEnabled = HardwareController::Instance().IsBluetoothEnabled();
 
         POINT pt;
         GetCursorPos(&pt);
@@ -445,6 +452,7 @@ namespace Aqua {
             // Wi-Fi click
             if (mx >= m_wifiRect.left && mx <= m_wifiRect.right && my >= m_wifiRect.top && my <= m_wifiRect.bottom) {
                 m_wifiEnabled = !m_wifiEnabled;
+                HardwareController::Instance().SetWifiEnabled(m_wifiEnabled);
                 Render();
                 return 0;
             }
@@ -452,6 +460,7 @@ namespace Aqua {
             // Bluetooth click
             if (mx >= m_btRect.left && mx <= m_btRect.right && my >= m_btRect.top && my <= m_btRect.bottom) {
                 m_bluetoothEnabled = !m_bluetoothEnabled;
+                HardwareController::Instance().SetBluetoothEnabled(m_bluetoothEnabled);
                 Render();
                 return 0;
             }
@@ -494,6 +503,7 @@ namespace Aqua {
                 m_draggingBrightness = true;
                 float val = (mx - m_sliderBrightnessRect.left) / (m_sliderBrightnessRect.right - m_sliderBrightnessRect.left);
                 m_displayBrightness = std::clamp(val, 0.05f, 1.0f);
+                HardwareController::Instance().SetBrightness(m_displayBrightness);
                 Render();
                 return 0;
             }
@@ -528,6 +538,7 @@ namespace Aqua {
                 if (m_draggingBrightness) {
                     float val = (mx - m_sliderBrightnessRect.left) / (m_sliderBrightnessRect.right - m_sliderBrightnessRect.left);
                     m_displayBrightness = std::clamp(val, 0.05f, 1.0f);
+                    HardwareController::Instance().SetBrightness(m_displayBrightness);
                     needRepaint = true;
                 } else if (m_draggingVolume) {
                     float val = (mx - m_sliderVolumeRect.left) / (m_sliderVolumeRect.right - m_sliderVolumeRect.left);
