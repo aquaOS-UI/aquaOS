@@ -49,6 +49,7 @@ namespace Aqua {
         // Frosted Glass Background
         const D2D1_COLOR_F GlassBackground      = D2D1::ColorF(0.12f, 0.12f, 0.14f, 0.76f);
         const D2D1_COLOR_F GlassBackgroundDark  = D2D1::ColorF(0.08f, 0.08f, 0.10f, 0.88f);
+        const D2D1_COLOR_F GlassCard            = D2D1::ColorF(1.00f, 1.00f, 1.00f, 0.08f);
         const D2D1_COLOR_F GlassBorder          = D2D1::ColorF(1.00f, 1.00f, 1.00f, 0.14f);
         const D2D1_COLOR_F GlassHighlight       = D2D1::ColorF(1.00f, 1.00f, 1.00f, 0.22f);
         const D2D1_COLOR_F GlassSeparator       = D2D1::ColorF(1.00f, 1.00f, 1.00f, 0.10f);

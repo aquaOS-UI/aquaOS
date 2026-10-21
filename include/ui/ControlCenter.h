@@ -1,6 +1,7 @@
 #pragma once
 #include "Common.h"
 #include "DCompRenderer.h"
+#include "MediaControllerService.h"
 
 namespace Aqua {
 
@@ -22,13 +23,15 @@ namespace Aqua {
         static LRESULT CALLBACK WndProc(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
         LRESULT HandleMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
+        void CalculateLayout();
+
         HWND m_hwnd = nullptr;
         DCompSurface m_surface;
 
         int m_screenWidth = 0;
         int m_screenHeight = 0;
-        int m_width = 320;
-        int m_height = 340;
+        int m_width = 330;
+        int m_height = 360;
         float m_dpiScale = 1.0f;
         bool m_visible = false;
 
@@ -51,9 +54,23 @@ namespace Aqua {
         D2D1_RECT_F m_sliderBrightnessRect = {};
         D2D1_RECT_F m_sliderVolumeRect = {};
 
+        // Now Playing Media Widget
+        D2D1_RECT_F m_mediaCardRect = {};
+        D2D1_RECT_F m_mediaArtRect = {};
+        D2D1_RECT_F m_mediaPrevRect = {};
+        D2D1_RECT_F m_mediaPlayPauseRect = {};
+        D2D1_RECT_F m_mediaNextRect = {};
+
+        bool m_mediaPrevHover = false;
+        bool m_mediaPlayHover = false;
+        bool m_mediaNextHover = false;
+
         // DirectWrite Formats
         ComPtr<IDWriteTextFormat> m_formatTitle;
         ComPtr<IDWriteTextFormat> m_formatSubtitle;
+        ComPtr<IDWriteTextFormat> m_formatMediaTitle;
+        ComPtr<IDWriteTextFormat> m_formatMediaArtist;
+        ComPtr<IDWriteTextFormat> m_formatMediaButton;
 
         // Direct2D Brushes
         ComPtr<ID2D1SolidColorBrush> m_brushBg;
@@ -65,7 +82,8 @@ namespace Aqua {
         ComPtr<ID2D1SolidColorBrush> m_brushTextSecondary;
         ComPtr<ID2D1SolidColorBrush> m_brushSliderFill;
         ComPtr<ID2D1SolidColorBrush> m_brushSliderTextDark;
+        ComPtr<ID2D1SolidColorBrush> m_brushButtonHover;
+        ComPtr<ID2D1SolidColorBrush> m_brushMediaAccent;
     };
 
 }
-

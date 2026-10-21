@@ -4,6 +4,7 @@
 #include "WindowTiler.h"
 #include "LockScreen.h"
 #include "ThemeManager.h"
+#include "MediaControllerService.h"
 #include <algorithm>
 #include <cwctype>
 
@@ -376,6 +377,11 @@ namespace Aqua {
         float ccWidth = 28.0f * m_dpiScale;
         m_controlCenterRect = D2D1::RectF(rx - ccWidth, 4.0f, rx, h - 4.0f);
         rx -= (ccWidth + 6.0f * m_dpiScale);
+
+        // Now Playing Media Widget Button
+        float npWidth = 26.0f * m_dpiScale;
+        m_nowPlayingRect = D2D1::RectF(rx - npWidth, 4.0f, rx, h - 4.0f);
+        rx -= (npWidth + 6.0f * m_dpiScale);
 
         // Search / Spotlight
         float searchWidth = 28.0f * m_dpiScale;
@@ -753,6 +759,28 @@ namespace Aqua {
         ctx->FillEllipse(D2D1::Ellipse(D2D1::Point2F(cx - barW * 0.2f, cy + 4.1f), 3.2f, 3.2f), m_brushTextPrimary.Get());
     }
 
+    void TopBar::DrawNowPlayingIcon(ID2D1DeviceContext* ctx, float x, float y, float size, bool isPlaying) {
+        float cx = x + size * 0.5f;
+        float cy = y + size * 0.5f;
+
+        float barW = 2.4f * m_dpiScale;
+        float gap = 3.2f * m_dpiScale;
+        float bar1H = isPlaying ? (10.0f * m_dpiScale) : (5.0f * m_dpiScale);
+        float bar2H = isPlaying ? (15.0f * m_dpiScale) : (8.0f * m_dpiScale);
+        float bar3H = isPlaying ? (12.0f * m_dpiScale) : (6.0f * m_dpiScale);
+
+        auto drawBar = [&](float bx, float bh) {
+            ctx->FillRoundedRectangle(
+                D2D1::RoundedRect(D2D1::RectF(bx - barW * 0.5f, cy - bh * 0.5f, bx + barW * 0.5f, cy + bh * 0.5f), 1.2f, 1.2f),
+                isPlaying ? m_brushTextPrimary.Get() : m_brushTextSecondary.Get()
+            );
+        };
+
+        drawBar(cx - gap, bar1H);
+        drawBar(cx, bar2H);
+        drawBar(cx + gap, bar3H);
+    }
+
     void TopBar::Render() {
         auto ctx = m_surface.BeginDraw();
         if (!ctx) return;
@@ -819,6 +847,15 @@ namespace Aqua {
             ctx->FillRoundedRectangle(D2D1::RoundedRect(m_controlCenterRect, 4.0f, 4.0f), m_brushHover.Get());
         }
         DrawControlCenterIcon(ctx, m_controlCenterRect.left + 4.0f, m_controlCenterRect.top + 3.0f, 20.0f * m_dpiScale);
+
+        // Now Playing Media Widget Button (when media session is active)
+        auto track = MediaControllerService::Instance().GetCurrentTrack();
+        if (track.hasMedia) {
+            if (m_nowPlayingHovered) {
+                ctx->FillRoundedRectangle(D2D1::RoundedRect(m_nowPlayingRect, 4.0f, 4.0f), m_brushHover.Get());
+            }
+            DrawNowPlayingIcon(ctx, m_nowPlayingRect.left + 3.0f, m_nowPlayingRect.top + 3.0f, 20.0f * m_dpiScale, track.isPlaying);
+        }
 
         // Real-Time Clock
         if (m_clockHovered) {
@@ -898,6 +935,9 @@ namespace Aqua {
             bool ccH = (mx >= m_controlCenterRect.left && mx <= m_controlCenterRect.right);
             if (ccH != m_controlCenterHovered) { m_controlCenterHovered = ccH; needRepaint = true; }
 
+            bool npH = (mx >= m_nowPlayingRect.left && mx <= m_nowPlayingRect.right);
+            if (npH != m_nowPlayingHovered) { m_nowPlayingHovered = npH; needRepaint = true; }
+
             bool wH = (mx >= m_wifiRect.left && mx <= m_wifiRect.right);
             if (wH != m_wifiHovered) { m_wifiHovered = wH; needRepaint = true; }
 
@@ -917,6 +957,7 @@ namespace Aqua {
             m_logoHovered = false;
             m_searchHovered = false;
             m_controlCenterHovered = false;
+            m_nowPlayingHovered = false;
             m_wifiHovered = false;
             m_batteryHovered = false;
             m_clockHovered = false;
@@ -1008,6 +1049,16 @@ namespace Aqua {
             // 3. Control Center Icon
             if (mx >= m_controlCenterRect.left && mx <= m_controlCenterRect.right) {
                 if (m_onControlCenter) m_onControlCenter();
+                return 0;
+            }
+
+            // 3b. Now Playing Icon -> Open Control Center or Toggle Play/Pause
+            if (mx >= m_nowPlayingRect.left && mx <= m_nowPlayingRect.right) {
+                if ((GetKeyState(VK_CONTROL) & 0x8000) != 0) {
+                    MediaControllerService::Instance().TogglePlayPause();
+                } else if (m_onControlCenter) {
+                    m_onControlCenter();
+                }
                 return 0;
             }
 

@@ -61,6 +61,7 @@ namespace Aqua {
         void DrawBatteryIcon(ID2D1DeviceContext* ctx, float x, float y, float width, float height, int percent, bool charging);
         void DrawSearchIcon(ID2D1DeviceContext* ctx, float x, float y, float size);
         void DrawControlCenterIcon(ID2D1DeviceContext* ctx, float x, float y, float size);
+        void DrawNowPlayingIcon(ID2D1DeviceContext* ctx, float x, float y, float size, bool isPlaying);
 
         HWND m_hwnd = nullptr;
         DCompSurface m_surface;
@@ -81,6 +82,7 @@ namespace Aqua {
 
         // Interactive Status Buttons (Right)
         D2D1_RECT_F m_logoRect = {};
+        D2D1_RECT_F m_nowPlayingRect = {};
         D2D1_RECT_F m_searchRect = {};
         D2D1_RECT_F m_controlCenterRect = {};
         D2D1_RECT_F m_batteryRect = {};
@@ -88,6 +90,7 @@ namespace Aqua {
         D2D1_RECT_F m_clockRect = {};
 
         bool m_logoHovered = false;
+        bool m_nowPlayingHovered = false;
         bool m_searchHovered = false;
         bool m_controlCenterHovered = false;
         bool m_wifiHovered = false;

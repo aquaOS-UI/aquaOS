@@ -62,6 +62,7 @@ set(SERVICES_SOURCES
     src/services/StageManager.cpp
     src/services/QuickLook.cpp
     src/services/AppCatalogService.cpp
+    src/services/MediaControllerService.cpp
 )
 
 set(SERVICES_HEADERS
@@ -69,6 +70,7 @@ set(SERVICES_HEADERS
     include/services/StageManager.h
     include/services/QuickLook.h
     include/services/AppCatalogService.h
+    include/services/MediaControllerService.h
 )
 
 set(APP_SOURCES
@@ -135,6 +137,7 @@ target_link_libraries(AquaShell PRIVATE
     comctl32
     comdlg32
     version
+    windowsapp
 )
 
 # Compiler & Performance Flags

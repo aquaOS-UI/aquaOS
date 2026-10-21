@@ -1,14 +1,15 @@
+#define NOMINMAX
 #include "ControlCenter.h"
 #include "SystemInfo.h"
 #include "ThemeManager.h"
+#include "MediaControllerService.h"
 #include <algorithm>
 
 namespace Aqua {
 
     const wchar_t CC_CLASS_NAME[] = L"AquaControlCenterWindow";
 
-    ControlCenter::ControlCenter() {
-    }
+    ControlCenter::ControlCenter() = default;
 
     ControlCenter::~ControlCenter() {
         if (m_hwnd) {
@@ -21,8 +22,8 @@ namespace Aqua {
         m_screenWidth = screenWidth;
         m_screenHeight = screenHeight;
 
-        m_width = 320;
-        m_height = 340;
+        m_width = 330;
+        m_height = 368;
 
         int posX = m_screenWidth - m_width - 12;
         int posY = 38;
@@ -46,8 +47,8 @@ namespace Aqua {
         if (!m_hwnd) return false;
 
         m_dpiScale = GetDpiScale(m_hwnd);
-        m_width = static_cast<int>(320 * m_dpiScale);
-        m_height = static_cast<int>(340 * m_dpiScale);
+        m_width = static_cast<int>(330 * m_dpiScale);
+        m_height = static_cast<int>(368 * m_dpiScale);
 
         if (!m_surface.Create(m_hwnd, m_width, m_height)) {
             return false;
@@ -60,7 +61,7 @@ namespace Aqua {
         auto dwrite = engine.GetDWriteFactory();
         auto ctx = engine.GetD2DContext();
 
-        // DirectWrite Formats
+        // 1. DirectWrite Formats
         dwrite->CreateTextFormat(
             L"Segoe UI Variable Display",
             nullptr,
@@ -107,16 +108,54 @@ namespace Aqua {
             );
         }
 
-        if (m_formatTitle) {
-            m_formatTitle->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
-        }
-        if (m_formatSubtitle) {
-            m_formatSubtitle->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+        dwrite->CreateTextFormat(
+            L"Segoe UI Variable Display",
+            nullptr,
+            DWRITE_FONT_WEIGHT_SEMI_BOLD,
+            DWRITE_FONT_STYLE_NORMAL,
+            DWRITE_FONT_STRETCH_NORMAL,
+            12.0f * m_dpiScale,
+            L"en-US",
+            &m_formatMediaTitle
+        );
+        if (m_formatMediaTitle) {
+            m_formatMediaTitle->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
+            m_formatMediaTitle->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
         }
 
-        // Direct2D Brushes
+        dwrite->CreateTextFormat(
+            L"Segoe UI Variable Display",
+            nullptr,
+            DWRITE_FONT_WEIGHT_NORMAL,
+            DWRITE_FONT_STYLE_NORMAL,
+            DWRITE_FONT_STRETCH_NORMAL,
+            10.5f * m_dpiScale,
+            L"en-US",
+            &m_formatMediaArtist
+        );
+        if (m_formatMediaArtist) {
+            m_formatMediaArtist->SetWordWrapping(DWRITE_WORD_WRAPPING_NO_WRAP);
+            m_formatMediaArtist->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+        }
+
+        dwrite->CreateTextFormat(
+            L"Segoe UI",
+            nullptr,
+            DWRITE_FONT_WEIGHT_NORMAL,
+            DWRITE_FONT_STYLE_NORMAL,
+            DWRITE_FONT_STRETCH_NORMAL,
+            13.0f * m_dpiScale,
+            L"en-US",
+            &m_formatMediaButton
+        );
+        if (m_formatMediaButton) {
+            m_formatMediaButton->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
+            m_formatMediaButton->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+        }
+
+        // 2. Direct2D Brushes
         ctx->CreateSolidColorBrush(Colors::GlassBackgroundDark, &m_brushBg);
-        ctx->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.08f), &m_brushCardBg);
+        ctx->CreateSolidColorBrush(Colors::GlassCard, &m_brushCardBg);
         ctx->CreateSolidColorBrush(Colors::GlassBorder, &m_brushBorder);
         ctx->CreateSolidColorBrush(Colors::AccentBlue, &m_brushActive);
         ctx->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.18f), &m_brushInactive);
@@ -124,31 +163,68 @@ namespace Aqua {
         ctx->CreateSolidColorBrush(Colors::TextSecondary, &m_brushTextSecondary);
         ctx->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.95f), &m_brushSliderFill);
         ctx->CreateSolidColorBrush(D2D1::ColorF(0.1f, 0.1f, 0.1f, 1.0f), &m_brushSliderTextDark);
+        ctx->CreateSolidColorBrush(D2D1::ColorF(1.0f, 1.0f, 1.0f, 0.16f), &m_brushButtonHover);
+        ctx->CreateSolidColorBrush(D2D1::ColorF(0.98f, 0.22f, 0.35f, 1.0f), &m_brushMediaAccent); // Apple Music pink/red accent
 
-        // Precompute Layout
+        CalculateLayout();
+
+        // 400ms update timer for live media & volume sync
+        SetTimer(m_hwnd, 4001, 400, nullptr);
+
+        return true;
+    }
+
+    void ControlCenter::CalculateLayout() {
         float pad = 12.0f * m_dpiScale;
         float gap = 8.0f * m_dpiScale;
         float wHalf = (m_width - (pad * 2.0f) - gap) * 0.5f;
-        float hCard = 64.0f * m_dpiScale;
 
-        // Top Row: Wi-Fi & Bluetooth
+        // Row 1: Wi-Fi & Bluetooth
+        float hCard = 58.0f * m_dpiScale;
         m_wifiRect = D2D1::RectF(pad, pad, pad + wHalf, pad + hCard);
         m_btRect = D2D1::RectF(pad + wHalf + gap, pad, m_width - pad, pad + hCard);
 
-        // Middle Sliders
-        float sliderY1 = pad + hCard + gap + 4.0f;
-        float sliderH = 46.0f * m_dpiScale;
+        // Row 2: Sliders
+        float sliderY1 = pad + hCard + gap;
+        float sliderH = 42.0f * m_dpiScale;
         m_sliderBrightnessRect = D2D1::RectF(pad, sliderY1, m_width - pad, sliderY1 + sliderH);
 
         float sliderY2 = sliderY1 + sliderH + gap;
         m_sliderVolumeRect = D2D1::RectF(pad, sliderY2, m_width - pad, sliderY2 + sliderH);
 
-        // Bottom Row: Dark Mode & Focus
-        float botY = sliderY2 + sliderH + gap + 4.0f;
-        m_darkRect = D2D1::RectF(pad, botY, pad + wHalf, botY + hCard);
-        m_focusRect = D2D1::RectF(pad + wHalf + gap, botY, m_width - pad, botY + hCard);
+        // Row 3: Now Playing Media Card
+        float mediaY = sliderY2 + sliderH + gap;
+        float mediaH = 74.0f * m_dpiScale;
+        m_mediaCardRect = D2D1::RectF(pad, mediaY, m_width - pad, mediaY + mediaH);
 
-        return true;
+        float artSize = 52.0f * m_dpiScale;
+        m_mediaArtRect = D2D1::RectF(pad + 10.0f * m_dpiScale, mediaY + 11.0f * m_dpiScale, pad + 10.0f * m_dpiScale + artSize, mediaY + 11.0f * m_dpiScale + artSize);
+
+        // Transport Buttons
+        float btnSize = 26.0f * m_dpiScale;
+        float btnY = mediaY + (mediaH - btnSize) * 0.5f;
+        float rX = m_width - pad - 10.0f * m_dpiScale;
+
+        m_mediaNextRect = D2D1::RectF(rX - btnSize, btnY, rX, btnY + btnSize);
+        rX -= (btnSize + 5.0f * m_dpiScale);
+
+        m_mediaPlayPauseRect = D2D1::RectF(rX - btnSize, btnY, rX, btnY + btnSize);
+        rX -= (btnSize + 5.0f * m_dpiScale);
+
+        m_mediaPrevRect = D2D1::RectF(rX - btnSize, btnY, rX, btnY + btnSize);
+
+        // Row 4: Dark Mode & Focus
+        float botY = mediaY + mediaH + gap;
+        float botH = 56.0f * m_dpiScale;
+        m_darkRect = D2D1::RectF(pad, botY, pad + wHalf, botY + botH);
+        m_focusRect = D2D1::RectF(pad + wHalf + gap, botY, m_width - pad, botY + botH);
+
+        int targetHeight = static_cast<int>(botY + botH + pad);
+        if (targetHeight != m_height) {
+            m_height = targetHeight;
+            SetWindowPos(m_hwnd, HWND_TOPMOST, 0, 0, m_width, m_height, SWP_NOMOVE | SWP_NOACTIVATE);
+            m_surface.Resize(m_width, m_height);
+        }
     }
 
     void ControlCenter::Toggle() {
@@ -197,7 +273,7 @@ namespace Aqua {
         ctx->DrawRoundedRectangle(box, m_brushBorder.Get(), 1.2f);
 
         // Helper Lambda to Draw Quick Toggle Card
-        auto drawToggleCard = [&](const D2D1_RECT_F& rect, bool active, const std::wstring& title, const std::wstring& sub, bool isWifi) {
+        auto drawToggleCard = [&](const D2D1_RECT_F& rect, bool active, const std::wstring& title, const std::wstring& sub) {
             D2D1_ROUNDED_RECT card = D2D1::RoundedRect(rect, 12.0f * m_dpiScale, 12.0f * m_dpiScale);
             ctx->FillRoundedRectangle(card, m_brushCardBg.Get());
             ctx->DrawRoundedRectangle(card, m_brushBorder.Get(), 1.0f);
@@ -214,41 +290,43 @@ namespace Aqua {
             ctx->FillEllipse(iconCirc, active ? m_brushActive.Get() : m_brushInactive.Get());
 
             // Label Text
-            D2D1_RECT_F titleRect = D2D1::RectF(iconX + iconSize + 8.0f, rect.top + 12.0f, rect.right - 6.0f, rect.top + 30.0f);
+            D2D1_RECT_F titleRect = D2D1::RectF(iconX + iconSize + 8.0f, rect.top + 10.0f, rect.right - 6.0f, rect.top + 28.0f);
             ctx->DrawTextW(title.c_str(), static_cast<UINT32>(title.length()), m_formatTitle.Get(), titleRect, m_brushTextPrimary.Get());
 
-            D2D1_RECT_F subRect = D2D1::RectF(iconX + iconSize + 8.0f, rect.top + 30.0f, rect.right - 6.0f, rect.bottom - 8.0f);
+            D2D1_RECT_F subRect = D2D1::RectF(iconX + iconSize + 8.0f, rect.top + 28.0f, rect.right - 6.0f, rect.bottom - 6.0f);
             ctx->DrawTextW(sub.c_str(), static_cast<UINT32>(sub.length()), m_formatSubtitle.Get(), subRect, m_brushTextSecondary.Get());
         };
 
-        // Draw Wi-Fi & Bluetooth
-        drawToggleCard(m_wifiRect, m_wifiEnabled, L"Wi-Fi", m_wifiEnabled ? L"Connected" : L"Off", true);
-        drawToggleCard(m_btRect, m_bluetoothEnabled, L"Bluetooth", m_bluetoothEnabled ? L"On" : L"Off", false);
+        // Draw Row 1: Wi-Fi & Bluetooth
+        drawToggleCard(m_wifiRect, m_wifiEnabled, L"Wi-Fi", m_wifiEnabled ? L"Connected" : L"Off");
+        drawToggleCard(m_btRect, m_bluetoothEnabled, L"Bluetooth", m_bluetoothEnabled ? L"On" : L"Off");
 
-        // Helper Lambda to Draw Slider Bar
-        auto drawSlider = [&](const D2D1_RECT_F& rect, float value, const std::wstring& label) {
-            D2D1_ROUNDED_RECT sliderBox = D2D1::RoundedRect(rect, 14.0f * m_dpiScale, 14.0f * m_dpiScale);
-            // Background
-            ctx->FillRoundedRectangle(sliderBox, m_brushCardBg.Get());
-            ctx->DrawRoundedRectangle(sliderBox, m_brushBorder.Get(), 1.0f);
+        // Helper Lambda to Draw Slider Card
+        auto drawSlider = [&](const D2D1_RECT_F& rect, float val, const wchar_t* label) {
+            D2D1_ROUNDED_RECT card = D2D1::RoundedRect(rect, 14.0f * m_dpiScale, 14.0f * m_dpiScale);
+            ctx->FillRoundedRectangle(card, m_brushCardBg.Get());
+            ctx->DrawRoundedRectangle(card, m_brushBorder.Get(), 1.0f);
 
-            // Filled progress portion
-            float fillWidth = (rect.right - rect.left) * value;
-            if (fillWidth > 6.0f) {
-                D2D1_ROUNDED_RECT fillBox = D2D1::RoundedRect(
-                    D2D1::RectF(rect.left, rect.top, rect.left + fillWidth, rect.bottom),
-                    14.0f * m_dpiScale, 14.0f * m_dpiScale
-                );
-                ctx->FillRoundedRectangle(fillBox, m_brushSliderFill.Get());
-            }
+            // Fill active track proportion
+            float trackW = (rect.right - rect.left) * val;
+            D2D1_ROUNDED_RECT fillRect = D2D1::RoundedRect(
+                D2D1::RectF(rect.left, rect.top, rect.left + trackW, rect.bottom),
+                14.0f * m_dpiScale, 14.0f * m_dpiScale
+            );
+            ctx->FillRoundedRectangle(fillRect, m_brushSliderFill.Get());
 
-            // Slider Label
-            D2D1_RECT_F lblRect = D2D1::RectF(rect.left + 16.0f * m_dpiScale, rect.top, rect.right - 16.0f * m_dpiScale, rect.bottom);
-            ID2D1SolidColorBrush* textBrush = (value > 0.45f) ? m_brushSliderTextDark.Get() : m_brushTextPrimary.Get();
-            ctx->DrawTextW(label.c_str(), static_cast<UINT32>(label.length()), m_formatTitle.Get(), lblRect, textBrush);
+            // Text Label
+            D2D1_RECT_F labelRect = D2D1::RectF(rect.left + 16.0f * m_dpiScale, rect.top + 10.0f, rect.right - 16.0f, rect.bottom - 10.0f);
+            ctx->DrawTextW(
+                label,
+                static_cast<UINT32>(wcslen(label)),
+                m_formatTitle.Get(),
+                labelRect,
+                (val > 0.45f) ? m_brushSliderTextDark.Get() : m_brushTextPrimary.Get()
+            );
         };
 
-        // Draw Sliders
+        // Draw Row 2: Sliders
         wchar_t bStr[32];
         swprintf_s(bStr, L"Display Brightness (%d%%)", static_cast<int>(m_displayBrightness * 100.0f));
         drawSlider(m_sliderBrightnessRect, m_displayBrightness, bStr);
@@ -257,9 +335,69 @@ namespace Aqua {
         swprintf_s(vStr, L"Sound Volume (%d%%)", static_cast<int>(m_soundVolume * 100.0f));
         drawSlider(m_sliderVolumeRect, m_soundVolume, vStr);
 
-        // Draw Dark Mode & Focus
-        drawToggleCard(m_darkRect, m_darkModeEnabled, L"Dark Mode", m_darkModeEnabled ? L"On" : L"Off", false);
-        drawToggleCard(m_focusRect, m_focusEnabled, L"Focus", m_focusEnabled ? L"Do Not Disturb" : L"Off", false);
+        // Draw Row 3: Now Playing Media Card
+        D2D1_ROUNDED_RECT mediaCardBox = D2D1::RoundedRect(m_mediaCardRect, 14.0f * m_dpiScale, 14.0f * m_dpiScale);
+        ctx->FillRoundedRectangle(mediaCardBox, m_brushCardBg.Get());
+        ctx->DrawRoundedRectangle(mediaCardBox, m_brushBorder.Get(), 1.0f);
+
+        auto track = MediaControllerService::Instance().GetCurrentTrack();
+        auto thumbBitmap = MediaControllerService::Instance().GetThumbnailBitmap(ctx);
+
+        // Album Artwork Box
+        D2D1_ROUNDED_RECT artBox = D2D1::RoundedRect(m_mediaArtRect, 8.0f * m_dpiScale, 8.0f * m_dpiScale);
+        if (thumbBitmap) {
+            ctx->DrawBitmap(thumbBitmap.Get(), m_mediaArtRect);
+            ctx->DrawRoundedRectangle(artBox, m_brushBorder.Get(), 0.8f);
+        } else {
+            // Gradient / Accent Placeholder
+            ctx->FillRoundedRectangle(artBox, m_brushMediaAccent.Get());
+            ctx->DrawTextW(L"♫", 1, m_formatMediaButton.Get(), m_mediaArtRect, m_brushTextPrimary.Get());
+        }
+
+        // Track Details (Middle)
+        float textX = m_mediaArtRect.right + 10.0f * m_dpiScale;
+        float textRight = m_mediaPrevRect.left - 6.0f * m_dpiScale;
+
+        D2D1_RECT_F mediaTitleRect = D2D1::RectF(textX, m_mediaCardRect.top + 15.0f * m_dpiScale, textRight, m_mediaCardRect.top + 34.0f * m_dpiScale);
+        ctx->DrawTextW(
+            track.title.c_str(),
+            static_cast<UINT32>(track.title.length()),
+            m_formatMediaTitle.Get(),
+            mediaTitleRect,
+            m_brushTextPrimary.Get()
+        );
+
+        std::wstring subDetails = track.artist;
+        if (!track.sourceApp.empty()) {
+            subDetails = subDetails.empty() ? track.sourceApp : (subDetails + L" • " + track.sourceApp);
+        }
+        if (subDetails.empty()) subDetails = L"Audio Controller";
+
+        D2D1_RECT_F mediaSubRect = D2D1::RectF(textX, m_mediaCardRect.top + 34.0f * m_dpiScale, textRight, m_mediaCardRect.top + 55.0f * m_dpiScale);
+        ctx->DrawTextW(
+            subDetails.c_str(),
+            static_cast<UINT32>(subDetails.length()),
+            m_formatMediaArtist.Get(),
+            mediaSubRect,
+            m_brushTextSecondary.Get()
+        );
+
+        // Transport Buttons (Previous, Play/Pause, Next)
+        auto drawTransportBtn = [&](const D2D1_RECT_F& btnRect, const wchar_t* symbol, bool isHovered) {
+            D2D1_ROUNDED_RECT btnBox = D2D1::RoundedRect(btnRect, (btnRect.bottom - btnRect.top) * 0.5f, (btnRect.bottom - btnRect.top) * 0.5f);
+            if (isHovered) {
+                ctx->FillRoundedRectangle(btnBox, m_brushButtonHover.Get());
+            }
+            ctx->DrawTextW(symbol, static_cast<UINT32>(wcslen(symbol)), m_formatMediaButton.Get(), btnRect, m_brushTextPrimary.Get());
+        };
+
+        drawTransportBtn(m_mediaPrevRect, L"⏮", m_mediaPrevHover);
+        drawTransportBtn(m_mediaPlayPauseRect, track.isPlaying ? L"⏸" : L"▶", m_mediaPlayHover);
+        drawTransportBtn(m_mediaNextRect, L"⏭", m_mediaNextHover);
+
+        // Draw Row 4: Dark Mode & Focus
+        drawToggleCard(m_darkRect, m_darkModeEnabled, L"Dark Mode", m_darkModeEnabled ? L"On" : L"Off");
+        drawToggleCard(m_focusRect, m_focusEnabled, L"Focus", m_focusEnabled ? L"Do Not Disturb" : L"Off");
 
         m_surface.EndDraw();
     }
@@ -286,6 +424,12 @@ namespace Aqua {
 
     LRESULT ControlCenter::HandleMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam) {
         switch (msg) {
+        case WM_TIMER:
+            if (m_visible) {
+                Render();
+            }
+            return 0;
+
         case WM_ACTIVATE:
             if (LOWORD(wParam) == WA_INACTIVE) {
                 Hide();
@@ -327,6 +471,23 @@ namespace Aqua {
                 return 0;
             }
 
+            // Media Transport Controls
+            if (mx >= m_mediaPrevRect.left && mx <= m_mediaPrevRect.right && my >= m_mediaPrevRect.top && my <= m_mediaPrevRect.bottom) {
+                MediaControllerService::Instance().PreviousTrack();
+                Render();
+                return 0;
+            }
+            if (mx >= m_mediaPlayPauseRect.left && mx <= m_mediaPlayPauseRect.right && my >= m_mediaPlayPauseRect.top && my <= m_mediaPlayPauseRect.bottom) {
+                MediaControllerService::Instance().TogglePlayPause();
+                Render();
+                return 0;
+            }
+            if (mx >= m_mediaNextRect.left && mx <= m_mediaNextRect.right && my >= m_mediaNextRect.top && my <= m_mediaNextRect.bottom) {
+                MediaControllerService::Instance().NextTrack();
+                Render();
+                return 0;
+            }
+
             // Brightness slider drag start
             if (mx >= m_sliderBrightnessRect.left && mx <= m_sliderBrightnessRect.right &&
                 my >= m_sliderBrightnessRect.top && my <= m_sliderBrightnessRect.bottom) {
@@ -351,19 +512,33 @@ namespace Aqua {
         }
 
         case WM_MOUSEMOVE: {
-            if (wParam & MK_LBUTTON) {
-                float mx = static_cast<float>(GET_X_LPARAM(lParam));
+            float mx = static_cast<float>(GET_X_LPARAM(lParam));
+            float my = static_cast<float>(GET_Y_LPARAM(lParam));
 
+            bool prevH = (mx >= m_mediaPrevRect.left && mx <= m_mediaPrevRect.right && my >= m_mediaPrevRect.top && my <= m_mediaPrevRect.bottom);
+            bool playH = (mx >= m_mediaPlayPauseRect.left && mx <= m_mediaPlayPauseRect.right && my >= m_mediaPlayPauseRect.top && my <= m_mediaPlayPauseRect.bottom);
+            bool nextH = (mx >= m_mediaNextRect.left && mx <= m_mediaNextRect.right && my >= m_mediaNextRect.top && my <= m_mediaNextRect.bottom);
+
+            bool needRepaint = (prevH != m_mediaPrevHover || playH != m_mediaPlayHover || nextH != m_mediaNextHover);
+            m_mediaPrevHover = prevH;
+            m_mediaPlayHover = playH;
+            m_mediaNextHover = nextH;
+
+            if (wParam & MK_LBUTTON) {
                 if (m_draggingBrightness) {
                     float val = (mx - m_sliderBrightnessRect.left) / (m_sliderBrightnessRect.right - m_sliderBrightnessRect.left);
                     m_displayBrightness = std::clamp(val, 0.05f, 1.0f);
-                    Render();
+                    needRepaint = true;
                 } else if (m_draggingVolume) {
                     float val = (mx - m_sliderVolumeRect.left) / (m_sliderVolumeRect.right - m_sliderVolumeRect.left);
                     m_soundVolume = std::clamp(val, 0.0f, 1.0f);
                     SystemInfo::SetMasterVolume(m_soundVolume);
-                    Render();
+                    needRepaint = true;
                 }
+            }
+
+            if (needRepaint) {
+                Render();
             }
             return 0;
         }
@@ -383,4 +558,3 @@ namespace Aqua {
     }
 
 }
-
