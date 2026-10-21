@@ -1,4 +1,3 @@
-#define NOMINMAX
 #include "TopBar.h"
 #include "SystemInfo.h"
 #include "TaskbarController.h"

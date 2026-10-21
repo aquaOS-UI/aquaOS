@@ -1,52 +1,119 @@
 cmake_minimum_required(VERSION 3.20)
-project(AquaShell LANGUAGES CXX)
+project(AquaShell
+    VERSION 1.0.0
+    DESCRIPTION "Enterprise macOS Desktop Environment Layer for Windows"
+    LANGUAGES CXX
+)
 
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
-include_directories(include)
+# ---------------------------------------------------------------------------
+# Project Source Definitions
+# ---------------------------------------------------------------------------
 
-set(SOURCES
-    src/main.cpp
-    src/DCompRenderer.cpp
-    src/TopBar.cpp
-    src/Dock.cpp
-    src/Spotlight.cpp
-    src/ControlCenter.cpp
-    src/TaskbarController.cpp
-    src/IconManager.cpp
-    src/MissionControl.cpp
-    src/Launchpad.cpp
-    src/NotificationCenter.cpp
-    src/StageManager.cpp
-    src/WindowTiler.cpp
-    src/QuickLook.cpp
-    src/ThemeManager.cpp
-    src/LockScreen.cpp
+set(CORE_SOURCES
+    src/core/DCompRenderer.cpp
+    src/core/ThemeManager.cpp
 )
 
-set(HEADERS
+set(CORE_HEADERS
     include/Common.h
-    include/DCompRenderer.h
-    include/SystemInfo.h
-    include/TopBar.h
-    include/Dock.h
-    include/Spotlight.h
-    include/ControlCenter.h
-    include/TaskbarController.h
-    include/IconManager.h
-    include/MissionControl.h
-    include/Launchpad.h
-    include/NotificationCenter.h
-    include/StageManager.h
-    include/WindowTiler.h
-    include/QuickLook.h
-    include/ThemeManager.h
-    include/LockScreen.h
+    include/core/DCompRenderer.h
+    include/core/ThemeManager.h
 )
 
-add_executable(AquaShell WIN32 ${SOURCES} ${HEADERS})
+set(PLATFORM_SOURCES
+    src/platform/IconManager.cpp
+    src/platform/TaskbarController.cpp
+)
 
+set(PLATFORM_HEADERS
+    include/platform/SystemInfo.h
+    include/platform/IconManager.h
+    include/platform/TaskbarController.h
+)
+
+set(UI_SOURCES
+    src/ui/Dock.cpp
+    src/ui/TopBar.cpp
+    src/ui/ControlCenter.cpp
+    src/ui/NotificationCenter.cpp
+    src/ui/Launchpad.cpp
+    src/ui/Spotlight.cpp
+    src/ui/MissionControl.cpp
+    src/ui/LockScreen.cpp
+)
+
+set(UI_HEADERS
+    include/ui/Dock.h
+    include/ui/TopBar.h
+    include/ui/ControlCenter.h
+    include/ui/NotificationCenter.h
+    include/ui/Launchpad.h
+    include/ui/Spotlight.h
+    include/ui/MissionControl.h
+    include/ui/LockScreen.h
+)
+
+set(SERVICES_SOURCES
+    src/services/WindowTiler.cpp
+    src/services/StageManager.cpp
+    src/services/QuickLook.cpp
+)
+
+set(SERVICES_HEADERS
+    include/services/WindowTiler.h
+    include/services/StageManager.h
+    include/services/QuickLook.h
+)
+
+set(APP_SOURCES
+    src/main.cpp
+)
+
+set(ASSET_RESOURCES
+    assets/resources.rc
+    assets/app.manifest
+)
+
+# ---------------------------------------------------------------------------
+# Target Configuration
+# ---------------------------------------------------------------------------
+
+add_executable(AquaShell WIN32
+    ${APP_SOURCES}
+    ${CORE_SOURCES}
+    ${CORE_HEADERS}
+    ${PLATFORM_SOURCES}
+    ${PLATFORM_HEADERS}
+    ${UI_SOURCES}
+    ${UI_HEADERS}
+    ${SERVICES_SOURCES}
+    ${SERVICES_HEADERS}
+    ${ASSET_RESOURCES}
+)
+
+# Organize virtual folders in IDEs (Visual Studio, CLion)
+source_group("App" FILES ${APP_SOURCES})
+source_group("Core" FILES ${CORE_SOURCES} ${CORE_HEADERS})
+source_group("Platform" FILES ${PLATFORM_SOURCES} ${PLATFORM_HEADERS})
+source_group("UI" FILES ${UI_SOURCES} ${UI_HEADERS})
+source_group("Services" FILES ${SERVICES_SOURCES} ${SERVICES_HEADERS})
+source_group("Assets" FILES ${ASSET_RESOURCES})
+
+# Modular Include Directories
+target_include_directories(AquaShell PRIVATE
+    include
+    include/core
+    include/platform
+    include/ui
+    include/services
+    assets
+)
+
+# System Libraries
 target_link_libraries(AquaShell PRIVATE
     d3d11
     dxgi
@@ -68,7 +135,16 @@ target_link_libraries(AquaShell PRIVATE
     version
 )
 
+# Compiler & Performance Flags
 if (MSVC)
-    target_compile_options(AquaShell PRIVATE /W3 /permissive- /utf-8)
+    target_compile_options(AquaShell PRIVATE
+        /W3
+        /permissive-
+        /utf-8
+        /MP
+    )
+    target_compile_definitions(AquaShell PRIVATE
+        UNICODE
+        _UNICODE
+    )
 endif()
-

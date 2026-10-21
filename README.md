@@ -215,6 +215,55 @@ It replicates the fluid macOS desktop environment (Top Menu Bar, Parabolic Magni
 
 ---
 
+## 📁 Enterprise Project Structure
+
+```
+operating-system/
+├── CMakeLists.txt                # Enterprise CMake with modular targets & source groups
+├── .clang-format                 # Microsoft/Chromium standard C++ formatting rules
+├── README.md                     # Architectural documentation & guides
+├── build.bat / run.bat           # Root build & execution forwarders
+├── assets/                       # Static manifests & Windows resource files
+│   ├── app.manifest              # PerMonitorV2 DPI awareness & modern Windows OS manifest
+│   └── resources.rc              # Windows version information & embedded manifest
+├── docs/                         # Architecture specifications & diagrams
+│   └── ARCHITECTURE.md           # Subsystem overview & rendering pipeline
+├── scripts/                      # Build, launch, and diagnostic scripts
+│   ├── build.bat                 # Multi-config MSVC CMake build script
+│   ├── run.bat                   # Shell launcher
+│   └── restore.bat               # Standalone taskbar restoration
+├── include/                      # Public modular headers
+│   ├── Common.h                  # Base types, macros, COM smart pointers, DPI math
+│   ├── core/                     # Graphics engine & theme management
+│   │   ├── DCompRenderer.h       # DirectComposition & Direct2D surface engine
+│   │   └── ThemeManager.h        # Theme palette, brushes, colors
+│   ├── platform/                 # Windows OS integration services
+│   │   ├── SystemInfo.h          # MonitorManager, battery, RAM, CPU queries
+│   │   ├── IconManager.h         # Live HWND & JUMBO icon extraction
+│   │   └── TaskbarController.h   # Taskbar suppression & restoration
+│   ├── ui/                       # macOS Shell UI Surfaces
+│   │   ├── Dock.h                # Interactive magnified Dock & running apps
+│   │   ├── TopBar.h              # Menu bar with system status & menus
+│   │   ├── ControlCenter.h       # Quick toggles (Wi-Fi, BT, Brightness, Sound)
+│   │   ├── NotificationCenter.h  # Notification flyout & calendar
+│   │   ├── Launchpad.h           # Fullscreen app grid
+│   │   ├── Spotlight.h           # Global search & app launcher
+│   │   ├── MissionControl.h      # Window exposer & virtual workspaces
+│   │   └── LockScreen.h          # macOS-style lock & screensaver
+│   └── services/                 # Shell window & workspace management
+│       ├── WindowTiler.h         # macOS Sequoia snap tiling & keyboard snap
+│       ├── StageManager.h        # Stage Manager recent app strip
+│       └── QuickLook.h           # Spacebar quick previewer
+└── src/                          # Modular implementations
+    ├── main.cpp                  # WinMain entry point & shell orchestrator
+    ├── core/                     # DCompRenderer.cpp, ThemeManager.cpp
+    ├── platform/                 # IconManager.cpp, TaskbarController.cpp
+    ├── ui/                       # Dock.cpp, TopBar.cpp, ControlCenter.cpp, ...
+    └── services/                 # WindowTiler.cpp, StageManager.cpp, QuickLook.cpp
+```
+
+---
+
 ## 🛠️ Building & Running
 
 ### Requirements
