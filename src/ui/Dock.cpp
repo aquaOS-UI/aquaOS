@@ -709,6 +709,48 @@ namespace Aqua {
         }
     }
 
+    void Dock::UpdateDpiScaling(float newDpi) {
+        if (newDpi <= 0.0f) newDpi = 1.0f;
+        m_dpiScale = newDpi;
+        m_baseIconSize = 46.0f * m_dpiScale;
+        m_iconSpacing = 10.0f * m_dpiScale;
+        m_magnificationRadius = 110.0f * m_dpiScale;
+
+        auto dwrite = DCompEngine::Instance().GetDWriteFactory();
+        if (dwrite) {
+            m_tooltipFormat.Reset();
+            dwrite->CreateTextFormat(
+                L"Segoe UI Variable Display",
+                nullptr,
+                DWRITE_FONT_WEIGHT_SEMI_BOLD,
+                DWRITE_FONT_STYLE_NORMAL,
+                DWRITE_FONT_STRETCH_NORMAL,
+                12.0f * m_dpiScale,
+                L"en-US",
+                &m_tooltipFormat
+            );
+            if (!m_tooltipFormat) {
+                dwrite->CreateTextFormat(
+                    L"Segoe UI",
+                    nullptr,
+                    DWRITE_FONT_WEIGHT_SEMI_BOLD,
+                    DWRITE_FONT_STYLE_NORMAL,
+                    DWRITE_FONT_STRETCH_NORMAL,
+                    12.0f * m_dpiScale,
+                    L"en-US",
+                    &m_tooltipFormat
+                );
+            }
+            if (m_tooltipFormat) {
+                m_tooltipFormat->SetTextAlignment(DWRITE_TEXT_ALIGNMENT_CENTER);
+                m_tooltipFormat->SetParagraphAlignment(DWRITE_PARAGRAPH_ALIGNMENT_CENTER);
+            }
+        }
+
+        AdjustWindowWidthForItems();
+        CalculateLayout();
+    }
+
     void Dock::SummonToMonitor(HMONITOR hMon) {
         if (!hMon || hMon == m_currentMonitor) return;
 
@@ -720,11 +762,37 @@ namespace Aqua {
         m_screenWidth = mi.rcMonitor.right - mi.rcMonitor.left;
         m_screenHeight = mi.rcMonitor.bottom - mi.rcMonitor.top;
 
-        m_windowX = m_monitorRect.left + (m_screenWidth - m_windowWidth) / 2;
-        m_windowY = m_monitorRect.bottom - m_windowHeight - 6;
+        // Query DPI on the new monitor
+        UINT dpiX = 96, dpiY = 96;
+        float newDpi = GetDpiScale(m_hwnd);
+        if (std::abs(newDpi - m_dpiScale) > 0.04f) {
+            UpdateDpiScaling(newDpi);
+        } else {
+            AdjustWindowWidthForItems();
+            CalculateLayout();
+        }
 
-        SetWindowPos(m_hwnd, HWND_TOPMOST, m_windowX, m_windowY, m_windowWidth, m_windowHeight, SWP_NOACTIVATE);
+        m_windowX = m_monitorRect.left + (m_screenWidth - m_windowWidth) / 2;
+        m_summonTargetY = m_monitorRect.bottom - m_windowHeight - 6;
+        m_summonStartY = m_monitorRect.bottom; // Start tucked below edge
+
+        m_windowY = m_summonStartY;
+        m_isSummonAnimating = true;
+        m_summonAnimProgress = 0.0f;
+
+        SetWindowPos(
+            m_hwnd,
+            HWND_TOPMOST,
+            m_windowX,
+            m_windowY,
+            m_windowWidth,
+            m_windowHeight,
+            SWP_NOACTIVATE | SWP_SHOWWINDOW
+        );
+
+        m_surface.Resize(m_windowWidth, m_windowHeight);
         m_needsRedraw = true;
+        Render();
     }
 
     void Dock::UpdatePhysics() {
@@ -735,20 +803,52 @@ namespace Aqua {
         }
 
         // Multi-monitor Dock Summoning:
-        // When cursor pushes against the bottom edge of ANY monitor, summon Dock to that monitor!
+        // Hold against the bottom edge of an inactive monitor for ~200ms to summon
         POINT cursorPt;
         if (GetCursorPos(&cursorPt)) {
             HMONITOR cursorMon = MonitorFromPoint(cursorPt, MONITOR_DEFAULTTONEAREST);
             if (cursorMon && cursorMon != m_currentMonitor) {
                 MONITORINFO mi = { sizeof(MONITORINFO) };
                 if (GetMonitorInfoW(cursorMon, &mi)) {
-                    if (cursorPt.y >= mi.rcMonitor.bottom - 8 &&
+                    if (cursorPt.y >= mi.rcMonitor.bottom - 6 &&
                         cursorPt.x >= mi.rcMonitor.left &&
                         cursorPt.x <= mi.rcMonitor.right) {
-                        SummonToMonitor(cursorMon);
+                        if (cursorMon == m_summonCandidateMon) {
+                            m_summonCandidateTicks++;
+                            if (m_summonCandidateTicks >= 12) { // ~190ms of intentional gesture
+                                m_summonCandidateTicks = 0;
+                                m_summonCandidateMon = nullptr;
+                                SummonToMonitor(cursorMon);
+                            }
+                        } else {
+                            m_summonCandidateMon = cursorMon;
+                            m_summonCandidateTicks = 1;
+                        }
+                    } else {
+                        m_summonCandidateTicks = 0;
+                        m_summonCandidateMon = nullptr;
                     }
                 }
+            } else {
+                m_summonCandidateTicks = 0;
+                m_summonCandidateMon = nullptr;
             }
+        }
+
+        // Handle smooth slide-up summon animation
+        if (m_isSummonAnimating) {
+            m_summonAnimProgress += 0.08f;
+            if (m_summonAnimProgress >= 1.0f) {
+                m_summonAnimProgress = 1.0f;
+                m_isSummonAnimating = false;
+                m_windowY = m_summonTargetY;
+            } else {
+                // Cubic ease-out
+                float t = 1.0f - std::pow(1.0f - m_summonAnimProgress, 3.0f);
+                m_windowY = static_cast<int>(m_summonStartY + (m_summonTargetY - m_summonStartY) * t);
+            }
+            SetWindowPos(m_hwnd, HWND_TOPMOST, m_windowX, m_windowY, m_windowWidth, m_windowHeight, SWP_NOACTIVATE);
+            m_needsRedraw = true;
         }
 
         // Periodic Z-Order enforcement (every ~1s / 60 frames)
@@ -1107,6 +1207,13 @@ namespace Aqua {
         switch (msg) {
         case WM_MOUSEACTIVATE:
             return MA_NOACTIVATE;
+
+        case WM_DPICHANGED: {
+            UINT newDpiX = LOWORD(wParam);
+            float newScale = static_cast<float>(newDpiX) / 96.0f;
+            UpdateDpiScaling(newScale);
+            return 0;
+        }
 
         case WM_TIMER:
             UpdatePhysics();

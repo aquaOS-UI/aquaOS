@@ -81,6 +81,7 @@ namespace Aqua {
         void DrawTooltip(ID2D1DeviceContext* ctx, const std::wstring& text, float centerX, float topY);
         void ShowContextMenu(int itemIndex, int screenX, int screenY);
         void SummonToMonitor(HMONITOR hMon);
+        void UpdateDpiScaling(float newDpi);
 
         HWND m_hwnd = nullptr;
         HWND m_lastActiveAppHwnd = nullptr;
@@ -89,6 +90,14 @@ namespace Aqua {
 
         HMONITOR m_currentMonitor = nullptr;
         RECT m_monitorRect = {};
+
+        // Multi-monitor summon & spring animation
+        HMONITOR m_summonCandidateMon = nullptr;
+        int m_summonCandidateTicks = 0;
+        bool m_isSummonAnimating = false;
+        float m_summonAnimProgress = 1.0f;
+        int m_summonStartY = 0;
+        int m_summonTargetY = 0;
 
         int m_screenWidth = 0;
         int m_screenHeight = 0;
