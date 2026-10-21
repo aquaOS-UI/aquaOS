@@ -1,8 +1,5 @@
 #include <windows.h>
 
-// Embed Application Manifest
-1 24 "app.manifest"
-
 // Version Information
 VS_VERSION_INFO VERSIONINFO
 FILEVERSION     1,0,0,0
