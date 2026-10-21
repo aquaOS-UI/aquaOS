@@ -4,18 +4,18 @@ set "PROJECT_ROOT=%~dp0.."
 cd /d "%PROJECT_ROOT%"
 
 set "CONFIG=Release"
-if "%~1"=="Debug" set "CONFIG=Debug"
-if "%~1"=="debug" set "CONFIG=Debug"
+if /i "%~1"=="debug" set "CONFIG=Debug"
 
-if exist "build\%CONFIG%\AquaShell.exe" (
-    echo Launching AquaShell (%CONFIG%)...
-    start "" "build\%CONFIG%\AquaShell.exe"
-) else (
-    echo [INFO] AquaShell.exe not found for %CONFIG%. Invoking build script...
-    call "%~dp0build.bat" %CONFIG%
-    if exist "build\%CONFIG%\AquaShell.exe" (
-        start "" "build\%CONFIG%\AquaShell.exe"
-    ) else (
-        echo [ERROR] Build completed but executable not found.
-    )
-)
+if not exist "%PROJECT_ROOT%\build\%CONFIG%\AquaShell.exe" goto :do_build
+
+:do_launch
+echo Launching AquaShell [%CONFIG%]...
+start "" "%PROJECT_ROOT%\build\%CONFIG%\AquaShell.exe"
+exit /b 0
+
+:do_build
+echo [INFO] AquaShell.exe not found for %CONFIG%. Invoking build script...
+call "%~dp0build.bat" %CONFIG%
+if exist "%PROJECT_ROOT%\build\%CONFIG%\AquaShell.exe" goto :do_launch
+echo [ERROR] Build completed but executable was not found at %PROJECT_ROOT%\build\%CONFIG%\AquaShell.exe.
+exit /b 1

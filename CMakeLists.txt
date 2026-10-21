@@ -148,3 +148,15 @@ if (MSVC)
         _UNICODE
     )
 endif()
+
+# ---------------------------------------------------------------------------
+# Auxiliary Recovery Tool
+# ---------------------------------------------------------------------------
+if (EXISTS "${CMAKE_CURRENT_SOURCE_DIR}/tools/RestoreTaskbar.cpp")
+    add_executable(RestoreTaskbar tools/RestoreTaskbar.cpp)
+    target_link_libraries(RestoreTaskbar PRIVATE user32 gdi32)
+    if (MSVC)
+        target_compile_options(RestoreTaskbar PRIVATE /W3 /utf-8 /MP)
+        target_compile_definitions(RestoreTaskbar PRIVATE UNICODE _UNICODE)
+    endif()
+endif()
