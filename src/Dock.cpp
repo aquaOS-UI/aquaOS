@@ -6,7 +6,9 @@
 #include <sstream>
 #include <commdlg.h>
 #include <shlobj.h>
+#include <shlwapi.h>
 #include <algorithm>
+#include <unordered_map>
 
 namespace Aqua {
 
@@ -25,32 +27,13 @@ namespace Aqua {
         return path;
     }
 
-    static std::wstring ResolveShortcut(const std::wstring& lnkPath) {
-        if (lnkPath.length() < 4 || _wcsicmp(lnkPath.c_str() + lnkPath.length() - 4, L".lnk") != 0) {
-            return lnkPath;
+    static std::wstring QueryDefaultBrowserPath() {
+        wchar_t buf[MAX_PATH] = {};
+        DWORD len = MAX_PATH;
+        if (SUCCEEDED(AssocQueryStringW(ASSOCF_NONE, ASSOCSTR_EXECUTABLE, L"http", L"open", buf, &len)) && buf[0] != L'\0') {
+            return buf;
         }
-
-        ComPtr<IShellLinkW> shellLink;
-        if (FAILED(CoCreateInstance(CLSID_ShellLink, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&shellLink)))) {
-            return lnkPath;
-        }
-
-        ComPtr<IPersistFile> persistFile;
-        if (FAILED(shellLink.As(&persistFile))) {
-            return lnkPath;
-        }
-
-        if (FAILED(persistFile->Load(lnkPath.c_str(), STGM_READ))) {
-            return lnkPath;
-        }
-
-        wchar_t target[MAX_PATH] = {};
-        if (SUCCEEDED(shellLink->GetPath(target, MAX_PATH, nullptr, SLGP_UNCPRIORITY))) {
-            if (target[0] != L'\0') {
-                return target;
-            }
-        }
-        return lnkPath;
+        return L"C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe";
     }
 
     static bool IsAquaWindow(HWND hwnd) {
@@ -110,34 +93,40 @@ namespace Aqua {
             // Skip our own AquaShell windows and system desktop
             if (IsAquaWindow(hwnd)) return TRUE;
 
-            // Tool windows filtering
             LONG_PTR exStyle = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
+
+            // Skip tool windows unless they have WS_EX_APPWINDOW
             if ((exStyle & WS_EX_TOOLWINDOW) && !(exStyle & WS_EX_APPWINDOW)) return TRUE;
 
-            // Skip owned windows if owner is visible
+            // Skip owned windows unless they have WS_EX_APPWINDOW
             HWND owner = GetWindow(hwnd, GW_OWNER);
-            if (owner != nullptr && IsWindowVisible(owner)) return TRUE;
+            if (owner != nullptr && !(exStyle & WS_EX_APPWINDOW)) return TRUE;
 
-            // Cloaked check
+            // Cloaked check (Windows 10/11 virtual desktops & suspended apps)
+            // Minimized windows can report cloaked by shell; do not skip them if iconic
             int cloaked = 0;
             if (SUCCEEDED(DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, &cloaked, sizeof(cloaked)))) {
-                if (cloaked != 0) return TRUE;
+                if (cloaked != 0 && !IsIconic(hwnd)) return TRUE;
             }
-
-            wchar_t titleBuf[512] = {};
-            GetWindowTextW(hwnd, titleBuf, 512);
 
             wchar_t classBuf[256] = {};
             GetClassNameW(hwnd, classBuf, 256);
             std::wstring cls = classBuf;
 
-            if (cls == L"Windows.UI.Core.CoreWindow" && wcslen(titleBuf) == 0) return TRUE;
-            if (cls == L"ApplicationManager_DesktopShellWindow") return TRUE;
+            // Skip known system background classes
+            if (cls == L"Windows.UI.Core.CoreWindow" ||
+                cls == L"ApplicationManager_DesktopShellWindow" ||
+                cls == L"XamlExplorerHostIslandWindow" ||
+                cls == L"EdgeUiInputWndClass" ||
+                cls == L"DummyDWMListenerWindow") {
+                return TRUE;
+            }
 
+            // Window dimension filter: skip 0x0 or degenerate helper windows
             if (!IsIconic(hwnd)) {
                 RECT rc = {};
                 GetWindowRect(hwnd, &rc);
-                if ((rc.right - rc.left) < 60 || (rc.bottom - rc.top) < 60) return TRUE;
+                if ((rc.right - rc.left) < 24 || (rc.bottom - rc.top) < 24) return TRUE;
             }
 
             DWORD pid = 0;
@@ -156,6 +145,8 @@ namespace Aqua {
             }
 
             std::wstring procExe = ToLower(GetFileName(procPath));
+
+            // For UWP apps hosted in ApplicationFrameHost, discover the actual child process
             if (procExe == L"applicationframehost.exe") {
                 EnumChildWindows(hwnd, [](HWND child, LPARAM lp) -> BOOL {
                     DWORD cPid = 0;
@@ -182,6 +173,9 @@ namespace Aqua {
                 procExe = ToLower(GetFileName(procPath));
             }
 
+            wchar_t titleBuf[512] = {};
+            GetWindowTextW(hwnd, titleBuf, 512);
+
             AppWindowInfo info;
             info.hwnd = hwnd;
             info.processPath = procPath;
@@ -200,6 +194,12 @@ namespace Aqua {
     static bool DoesWindowMatchItem(const AppWindowInfo& w, const DockItem& item) {
         if (item.type == DockAppType::Separator || item.type == DockAppType::Launchpad) {
             return false;
+        }
+
+        // Unpinned dynamic apps match directly by unique appKey
+        if (!item.isPinned && !item.appKey.empty()) {
+            std::wstring currentKey = !w.processPath.empty() ? ToLower(w.processPath) : (!w.processExe.empty() ? ToLower(w.processExe) : ToLower(w.title));
+            return currentKey == item.appKey;
         }
 
         std::wstring lowerTitle = ToLower(w.title);
@@ -234,17 +234,19 @@ namespace Aqua {
         }
 
         case DockAppType::Browser: {
+            // Check direct executable match
+            if (!itemExe.empty() && itemExe.find(L".exe") != std::wstring::npos && w.processExe == itemExe) {
+                return true;
+            }
+            if (!iconExe.empty() && iconExe.find(L".exe") != std::wstring::npos && w.processExe == iconExe) {
+                return true;
+            }
+            // General browser process match
             if (w.processExe == L"msedge.exe" || w.processExe == L"chrome.exe" ||
                 w.processExe == L"firefox.exe" || w.processExe == L"brave.exe" ||
                 w.processExe == L"opera.exe" || w.processExe == L"vivaldi.exe" ||
                 w.processExe == L"arc.exe" || w.processExe == L"zen.exe" ||
                 w.processExe == L"waterfox.exe" || w.processExe == L"chromium.exe") {
-                return true;
-            }
-            if (!itemExe.empty() && itemExe.find(L".exe") != std::wstring::npos && w.processExe == itemExe) {
-                return true;
-            }
-            if (!iconExe.empty() && iconExe.find(L".exe") != std::wstring::npos && w.processExe == iconExe) {
                 return true;
             }
             return false;
@@ -304,18 +306,16 @@ namespace Aqua {
 
         case DockAppType::CustomApp:
         default: {
-            if (itemExe.length() >= 4 && itemExe.substr(itemExe.length() - 4) == L".lnk") {
-                std::wstring resolved = ResolveShortcut(item.executePath);
-                std::wstring resolvedExe = ToLower(GetFileName(resolved));
-                if (!resolvedExe.empty() && w.processExe == resolvedExe) {
-                    return true;
-                }
+            std::wstring resolved = IconManager::Instance().ResolvePath(item.executePath);
+            std::wstring resolvedExe = ToLower(GetFileName(resolved));
+            if (!resolvedExe.empty() && w.processExe == resolvedExe) {
+                return true;
             }
-            if (!itemExe.empty() && itemExe.find(L".exe") != std::wstring::npos) {
-                if (w.processExe == itemExe) return true;
+            if (!itemExe.empty() && itemExe.find(L".exe") != std::wstring::npos && w.processExe == itemExe) {
+                return true;
             }
-            if (!iconExe.empty() && iconExe.find(L".exe") != std::wstring::npos) {
-                if (w.processExe == iconExe) return true;
+            if (!iconExe.empty() && iconExe.find(L".exe") != std::wstring::npos && w.processExe == iconExe) {
+                return true;
             }
             if (!lowerItemName.empty()) {
                 if (w.processExe.find(lowerItemName) != std::wstring::npos) {
@@ -333,18 +333,18 @@ namespace Aqua {
     Dock::Dock() {
         LoadConfiguration();
         if (m_items.empty()) {
+            std::wstring browserPath = QueryDefaultBrowserPath();
             m_items = {
-                { DockAppType::Finder,          L"Finder",            L"explorer.exe",       L"", L"", true,  1.0f, 1.0f },
-                { DockAppType::Launchpad,       L"Launchpad",         L"",                   L"", L"", false, 1.0f, 1.0f },
-                { DockAppType::Browser,         L"Browser",           L"https://google.com", L"", L"C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe", false, 1.0f, 1.0f },
-                { DockAppType::Terminal,        L"Terminal",          L"wt.exe",             L"", L"%LOCALAPPDATA%\\Microsoft\\WindowsApps\\wt.exe", true, 1.0f, 1.0f },
-                { DockAppType::CodeEditor,      L"Visual Studio Code",L"code.exe",           L"", L"%LOCALAPPDATA%\\Programs\\Microsoft VS Code\\Code.exe", false, 1.0f, 1.0f },
-                { DockAppType::Explorer,        L"Files",             L"explorer.exe",       L"", L"C:\\Windows\\explorer.exe", false, 1.0f, 1.0f },
-                { DockAppType::Calculator,      L"Calculator",        L"calc.exe",           L"", L"C:\\Windows\\System32\\calc.exe", false, 1.0f, 1.0f },
-                { DockAppType::ActivityMonitor, L"Activity Monitor",  L"taskmgr.exe",        L"", L"C:\\Windows\\System32\\Taskmgr.exe", false, 1.0f, 1.0f },
-                { DockAppType::Settings,        L"System Settings",   L"ms-settings:",       L"", L"", false, 1.0f, 1.0f },
-                { DockAppType::Separator,       L"",                  L"",                   L"", L"", false, 1.0f, 1.0f },
-                { DockAppType::Trash,           L"Trash",             L"explorer.exe",       L"shell:RecycleBinFolder", L"", false, 1.0f, 1.0f }
+                { DockAppType::Finder,          L"Finder",             L"explorer.exe",       L"", L"C:\\Windows\\explorer.exe", false, true, nullptr, L"" },
+                { DockAppType::Launchpad,       L"Launchpad",          L"",                   L"", L"", false, true, nullptr, L"" },
+                { DockAppType::Browser,         L"Browser",            browserPath,           L"", browserPath, false, true, nullptr, L"" },
+                { DockAppType::Terminal,        L"Terminal",           L"wt.exe",             L"", L"wt.exe", false, true, nullptr, L"" },
+                { DockAppType::CodeEditor,      L"Visual Studio Code", L"code.exe",           L"", L"code.exe", false, true, nullptr, L"" },
+                { DockAppType::Calculator,      L"Calculator",         L"calc.exe",           L"", L"C:\\Windows\\System32\\calc.exe", false, true, nullptr, L"" },
+                { DockAppType::ActivityMonitor, L"Activity Monitor",   L"taskmgr.exe",        L"", L"C:\\Windows\\System32\\Taskmgr.exe", false, true, nullptr, L"" },
+                { DockAppType::Settings,        L"System Settings",    L"ms-settings:",       L"", L"C:\\Windows\\ImmersiveControlPanel\\SystemSettings.exe", false, true, nullptr, L"" },
+                { DockAppType::Separator,       L"",                   L"",                   L"", L"", false, true, nullptr, L"" },
+                { DockAppType::Trash,           L"Trash",              L"explorer.exe",       L"shell:RecycleBinFolder", L"C:\\Windows\\System32\\imageres.dll,-54", false, true, nullptr, L"" }
             };
             SaveConfiguration();
         }
@@ -372,7 +372,6 @@ namespace Aqua {
             m_monitorRect = { 0, 0, screenWidth, screenHeight };
         }
 
-        // Window size accommodates magnified dock + tooltips
         m_windowWidth = 840;
         m_windowHeight = 120;
         m_windowX = m_monitorRect.left + (m_screenWidth - m_windowWidth) / 2;
@@ -457,6 +456,7 @@ namespace Aqua {
         ctx->CreateSolidColorBrush(D2D1::ColorF(0.72f, 0.72f, 0.76f), &m_brushLightGray);
         ctx->CreateSolidColorBrush(D2D1::ColorF(0.35f, 0.35f, 0.38f), &m_brushGearDark);
 
+        AdjustWindowWidthForItems();
         CalculateLayout();
         UpdateRunningStates();
 
@@ -480,9 +480,47 @@ namespace Aqua {
         }
     }
 
+    void Dock::AdjustWindowWidthForItems() {
+        float totalItemWidth = 0.0f;
+        for (size_t i = 0; i < m_items.size(); ++i) {
+            if (m_items[i].type == DockAppType::Separator) {
+                totalItemWidth += 16.0f * m_dpiScale;
+            } else {
+                totalItemWidth += m_baseIconSize;
+            }
+            if (i < m_items.size() - 1) {
+                totalItemWidth += m_iconSpacing;
+            }
+        }
+
+        // Add padding for magnification and margins
+        int neededWidth = static_cast<int>(totalItemWidth + 140.0f * m_dpiScale);
+        int maxWidth = m_screenWidth - 40;
+        if (neededWidth > maxWidth) neededWidth = maxWidth;
+        if (neededWidth < 840) neededWidth = 840;
+
+        if (neededWidth != m_windowWidth) {
+            m_windowWidth = neededWidth;
+            m_windowX = m_monitorRect.left + (m_screenWidth - m_windowWidth) / 2;
+            SetWindowPos(m_hwnd, HWND_TOPMOST, m_windowX, m_windowY, m_windowWidth, m_windowHeight, SWP_NOACTIVATE);
+            m_surface.Resize(m_windowWidth, m_windowHeight);
+        }
+    }
+
     std::vector<HWND> Dock::GetWindowsForItem(const DockItem& item) {
         std::vector<HWND> matches;
         auto windows = EnumerateAppWindows();
+
+        if (!item.isPinned && !item.appKey.empty()) {
+            for (const auto& w : windows) {
+                std::wstring key = !w.processPath.empty() ? ToLower(w.processPath) : (!w.processExe.empty() ? ToLower(w.processExe) : ToLower(w.title));
+                if (key == item.appKey) {
+                    matches.push_back(w.hwnd);
+                }
+            }
+            if (!matches.empty()) return matches;
+        }
+
         for (const auto& w : windows) {
             if (DoesWindowMatchItem(w, item)) {
                 matches.push_back(w.hwnd);
@@ -493,35 +531,122 @@ namespace Aqua {
 
     void Dock::UpdateRunningStates() {
         auto windows = EnumerateAppWindows();
-        bool anyChanged = false;
+        bool layoutChanged = false;
+
+        // 1. Reset running state on pinned items
         for (auto& item : m_items) {
-            if (item.type == DockAppType::Separator || item.type == DockAppType::Launchpad) {
-                if (item.isRunning) anyChanged = true;
+            if (item.isPinned) {
+                if (item.type == DockAppType::Separator || item.type == DockAppType::Launchpad) {
+                    item.isRunning = false;
+                    item.primaryHwnd = nullptr;
+                    continue;
+                }
+                if (item.isBouncing) {
+                    item.isRunning = true;
+                    continue;
+                }
                 item.isRunning = false;
-                continue;
+                item.primaryHwnd = nullptr;
             }
+        }
 
-            if (item.isBouncing) {
-                if (!item.isRunning) anyChanged = true;
-                item.isRunning = true;
-                continue;
-            }
+        // 2. Track which windows are matched to pinned items
+        std::vector<bool> windowMatched(windows.size(), false);
 
-            bool running = false;
-            for (const auto& w : windows) {
+        for (size_t wi = 0; wi < windows.size(); ++wi) {
+            const auto& w = windows[wi];
+            for (auto& item : m_items) {
+                if (!item.isPinned) continue;
                 if (DoesWindowMatchItem(w, item)) {
-                    running = true;
+                    item.isRunning = true;
+                    if (!item.primaryHwnd) {
+                        item.primaryHwnd = w.hwnd;
+                    }
+                    windowMatched[wi] = true;
                     break;
                 }
             }
-            if (item.isRunning != running) {
-                item.isRunning = running;
-                anyChanged = true;
+        }
+
+        // 3. For unmatched windows, group them by application key
+        std::unordered_map<std::wstring, std::vector<size_t>> unmatchedApps;
+        for (size_t wi = 0; wi < windows.size(); ++wi) {
+            if (windowMatched[wi]) continue;
+            const auto& w = windows[wi];
+
+            std::wstring key;
+            if (!w.processPath.empty()) {
+                key = ToLower(w.processPath);
+            } else if (!w.processExe.empty()) {
+                key = ToLower(w.processExe);
+            } else {
+                key = ToLower(w.title);
+            }
+
+            if (key.empty()) continue;
+            unmatchedApps[key].push_back(wi);
+        }
+
+        // 4. Update existing dynamic items or remove them if their windows closed
+        for (auto it = m_items.begin(); it != m_items.end(); ) {
+            if (!it->isPinned) {
+                auto appIt = unmatchedApps.find(it->appKey);
+                if (appIt != unmatchedApps.end()) {
+                    // Application is still running
+                    it->isRunning = true;
+                    const auto& firstWin = windows[appIt->second[0]];
+                    it->primaryHwnd = firstWin.hwnd;
+                    unmatchedApps.erase(appIt);
+                    ++it;
+                } else {
+                    // Application has closed! Remove it from dock
+                    it = m_items.erase(it);
+                    layoutChanged = true;
+                }
+            } else {
+                ++it;
             }
         }
-        if (anyChanged) {
-            m_needsRedraw = true;
+
+        // 5. Add new dynamic items for any remaining unmatched apps
+        // Insert right before Separator or Trash
+        for (const auto& [key, winIndices] : unmatchedApps) {
+            const auto& w = windows[winIndices[0]];
+
+            DockItem newItem;
+            newItem.type = DockAppType::CustomApp;
+            newItem.isPinned = false;
+            newItem.isRunning = true;
+            newItem.appKey = key;
+            newItem.primaryHwnd = w.hwnd;
+            newItem.executePath = w.processPath;
+            newItem.iconPath = w.processPath;
+            newItem.name = IconManager::Instance().GetAppFriendlyName(w.processPath, w.title);
+
+            // Smooth entry animation
+            newItem.currentScale = 0.5f;
+            newItem.targetScale = 1.0f;
+            newItem.currentSize = m_baseIconSize * 0.5f;
+
+            auto insertIt = std::find_if(m_items.begin(), m_items.end(), [](const DockItem& itm) {
+                return itm.type == DockAppType::Separator || itm.type == DockAppType::Trash;
+            });
+
+            if (insertIt != m_items.end()) {
+                m_items.insert(insertIt, newItem);
+            } else {
+                m_items.push_back(newItem);
+            }
+            layoutChanged = true;
         }
+
+        IconManager::Instance().PruneClosedHwnds();
+
+        if (layoutChanged) {
+            AdjustWindowWidthForItems();
+            CalculateLayout();
+        }
+        m_needsRedraw = true;
     }
 
     void Dock::CalculateLayout() {
@@ -617,7 +742,7 @@ namespace Aqua {
             SetWindowPos(m_hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
         }
 
-        // Periodically refresh running indicators (~every 480ms at 60fps)
+        // Periodically refresh running indicators & dynamic apps (~every 480ms at 60fps)
         m_stateUpdateFrame++;
         if (m_stateUpdateFrame >= 30) {
             m_stateUpdateFrame = 0;
@@ -694,17 +819,48 @@ namespace Aqua {
     void Dock::DrawIcon(ID2D1DeviceContext* ctx, const DockItem& item, float x, float y, float size) {
         float r = size * 0.22f;
         D2D1_ROUNDED_RECT iconBox = D2D1::RoundedRect(D2D1::RectF(x, y, x + size, y + size), r, r);
+        int iconPx = static_cast<int>(size * m_dpiScale);
 
-        // 1. If item has a real Windows icon path, extract and draw high-res icon
-        if (!item.iconPath.empty()) {
-            auto bmp = IconManager::Instance().GetIconForPath(ctx, item.iconPath, static_cast<int>(size * m_dpiScale));
+        // 1. If we have a live primary HWND, extract live window icon
+        if (item.primaryHwnd && IsWindow(item.primaryHwnd)) {
+            auto bmp = IconManager::Instance().GetIconForHwnd(ctx, item.primaryHwnd, iconPx);
             if (bmp) {
                 ctx->DrawBitmap(bmp.Get(), D2D1::RectF(x, y, x + size, y + size));
                 return;
             }
         }
 
-        // 2. Custom App Fallback tile
+        // 2. If item is marked running, check all its running HWNDs
+        if (item.isRunning) {
+            auto hwnds = GetWindowsForItem(item);
+            for (HWND h : hwnds) {
+                auto bmp = IconManager::Instance().GetIconForHwnd(ctx, h, iconPx);
+                if (bmp) {
+                    ctx->DrawBitmap(bmp.Get(), D2D1::RectF(x, y, x + size, y + size));
+                    return;
+                }
+            }
+        }
+
+        // 3. Try real Windows icon path
+        if (!item.iconPath.empty()) {
+            auto bmp = IconManager::Instance().GetIconForPath(ctx, item.iconPath, iconPx);
+            if (bmp) {
+                ctx->DrawBitmap(bmp.Get(), D2D1::RectF(x, y, x + size, y + size));
+                return;
+            }
+        }
+
+        // 4. Try executePath
+        if (!item.executePath.empty()) {
+            auto bmp = IconManager::Instance().GetIconForPath(ctx, item.executePath, iconPx);
+            if (bmp) {
+                ctx->DrawBitmap(bmp.Get(), D2D1::RectF(x, y, x + size, y + size));
+                return;
+            }
+        }
+
+        // 5. Custom App Fallback tile
         if (item.type == DockAppType::CustomApp) {
             ctx->FillRoundedRectangle(iconBox, m_brushAccentBlue.Get());
             if (!item.name.empty()) {
@@ -714,16 +870,13 @@ namespace Aqua {
             return;
         }
 
+        // 6. Procedural Fallback Drawings (only for standard items if no icon found)
         switch (item.type) {
         case DockAppType::Finder: {
-            // macOS Finder Face (Two-tone blue)
             ctx->FillRoundedRectangle(iconBox, m_brushAccentBlue.Get());
-
-            // Right half darker blue
             D2D1_ROUNDED_RECT rightHalf = D2D1::RoundedRect(D2D1::RectF(x + size * 0.5f, y, x + size, y + size), r, r);
             ctx->FillRoundedRectangle(rightHalf, m_brushFinderDarkBlue.Get());
 
-            // Center smile line & eyes
             float cx = x + size * 0.5f;
             float cy = y + size * 0.5f;
             ctx->FillEllipse(D2D1::Ellipse(D2D1::Point2F(cx - size * 0.2f, cy - size * 0.12f), size * 0.05f, size * 0.07f), m_brushTextPrimary.Get());
@@ -734,9 +887,7 @@ namespace Aqua {
         }
 
         case DockAppType::Launchpad: {
-            // Rocket / 3x3 App Grid
             ctx->FillRoundedRectangle(iconBox, m_brushDarkTile.Get());
-
             float step = size * 0.22f;
             float startDotX = x + size * 0.28f;
             float startDotY = y + size * 0.28f;
@@ -755,27 +906,18 @@ namespace Aqua {
         }
 
         case DockAppType::Browser: {
-            // Safari Compass
             ctx->FillRoundedRectangle(iconBox, m_brushAccentBlue.Get());
-
             float cx = x + size * 0.5f;
             float cy = y + size * 0.5f;
             float compassR = size * 0.36f;
-
-            // Dial white circle
             ctx->DrawEllipse(D2D1::Ellipse(D2D1::Point2F(cx, cy), compassR, compassR), m_brushTextPrimary.Get(), size * 0.04f);
-
-            // Red & White needle
             ctx->FillEllipse(D2D1::Ellipse(D2D1::Point2F(cx, cy), size * 0.05f, size * 0.05f), m_brushAccentRed.Get());
             break;
         }
 
         case DockAppType::Terminal: {
-            // Dark Terminal Prompt
             ctx->FillRoundedRectangle(iconBox, m_brushDarkTile.Get());
             ctx->DrawRoundedRectangle(iconBox, m_brushGlassBorder.Get(), 1.0f);
-
-            // Green '>_' text
             float cx = x + size * 0.22f;
             float cy = y + size * 0.38f;
             ctx->DrawLine(D2D1::Point2F(cx, cy), D2D1::Point2F(cx + size * 0.18f, cy + size * 0.12f), m_brushAccentGreen.Get(), size * 0.05f);
@@ -785,9 +927,7 @@ namespace Aqua {
         }
 
         case DockAppType::CodeEditor: {
-            // Code braces
             ctx->FillRoundedRectangle(iconBox, m_brushAccentBlue.Get());
-
             float cx = x + size * 0.5f;
             float cy = y + size * 0.5f;
             D2D1_ELLIPSE ring = D2D1::Ellipse(D2D1::Point2F(cx, cy), size * 0.24f, size * 0.24f);
@@ -796,19 +936,14 @@ namespace Aqua {
         }
 
         case DockAppType::Explorer: {
-            // Blue macOS Folder
             ctx->FillRoundedRectangle(iconBox, m_brushAccentBlue.Get());
-
-            // Folder tab
             D2D1_ROUNDED_RECT tab = D2D1::RoundedRect(D2D1::RectF(x + size * 0.15f, y + size * 0.22f, x + size * 0.5f, y + size * 0.45f), 2.0f, 2.0f);
             ctx->FillRoundedRectangle(tab, m_brushFinderDarkBlue.Get());
             break;
         }
 
         case DockAppType::Calculator: {
-            // Orange calculator
             ctx->FillRoundedRectangle(iconBox, m_brushAccentOrange.Get());
-
             float cx = x + size * 0.5f;
             float cy = y + size * 0.5f;
             ctx->DrawLine(D2D1::Point2F(cx - size * 0.16f, cy), D2D1::Point2F(cx + size * 0.16f, cy), m_brushTextPrimary.Get(), size * 0.045f);
@@ -817,9 +952,7 @@ namespace Aqua {
         }
 
         case DockAppType::ActivityMonitor: {
-            // Activity ECG Wave
             ctx->FillRoundedRectangle(iconBox, m_brushDarkTile.Get());
-
             float cx = x + size * 0.5f;
             float cy = y + size * 0.5f;
             D2D1_POINT_2F pts[5] = {
@@ -836,9 +969,7 @@ namespace Aqua {
         }
 
         case DockAppType::Settings: {
-            // Gear icon
             ctx->FillRoundedRectangle(iconBox, m_brushLightGray.Get());
-
             float cx = x + size * 0.5f;
             float cy = y + size * 0.5f;
             ctx->FillEllipse(D2D1::Ellipse(D2D1::Point2F(cx, cy), size * 0.20f, size * 0.20f), m_brushGearDark.Get());
@@ -847,9 +978,7 @@ namespace Aqua {
         }
 
         case DockAppType::Trash: {
-            // Trash can
             ctx->FillRoundedRectangle(iconBox, m_brushLightGray.Get());
-
             float cx = x + size * 0.5f;
             float cy = y + size * 0.5f;
             D2D1_ROUNDED_RECT basket = D2D1::RoundedRect(D2D1::RectF(cx - size * 0.16f, cy - size * 0.10f, cx + size * 0.16f, cy + size * 0.22f), 2.0f, 2.0f);
@@ -1051,12 +1180,28 @@ namespace Aqua {
                         }
 
                         if (isForeground && targetFg) {
-                            // Active foreground window clicked -> Minimize it!
-                            ShowWindow(targetFg, SW_MINIMIZE);
-                            if (m_lastActiveAppHwnd == targetFg) {
-                                m_lastActiveAppHwnd = nullptr;
+                            if (hwnds.size() > 1) {
+                                // Cycle to the next window of this app
+                                size_t currentIdx = 0;
+                                for (size_t wi = 0; wi < hwnds.size(); ++wi) {
+                                    if (hwnds[wi] == targetFg) {
+                                        currentIdx = wi;
+                                        break;
+                                    }
+                                }
+                                size_t nextIdx = (currentIdx + 1) % hwnds.size();
+                                HWND nextWnd = hwnds[nextIdx];
+                                ForceForegroundWindow(nextWnd);
+                                m_lastActiveAppHwnd = nextWnd;
+                                return 0;
+                            } else {
+                                // Single window active -> Minimize it!
+                                ShowWindow(targetFg, SW_MINIMIZE);
+                                if (m_lastActiveAppHwnd == targetFg) {
+                                    m_lastActiveAppHwnd = nullptr;
+                                }
+                                return 0;
                             }
-                            return 0;
                         } else {
                             // Inactive or minimized app clicked -> Restore and bring to front!
                             HWND target = hwnds[0];
@@ -1114,6 +1259,7 @@ namespace Aqua {
         if (!out.is_open()) return;
 
         for (const auto& item : m_items) {
+            if (!item.isPinned) continue; // NEVER persist unpinned dynamic running items!
             out << static_cast<int>(item.type) << L"|"
                 << item.name << L"|"
                 << item.executePath << L"|"
@@ -1144,9 +1290,34 @@ namespace Aqua {
                 item.executePath = sExec;
                 item.executeArgs = sArgs;
                 item.iconPath = sIcon;
+                item.isPinned = true;
                 item.isRunning = false;
                 item.targetScale = 1.0f;
                 item.currentScale = 1.0f;
+
+                // Auto-upgrade real icon paths if empty
+                if (item.iconPath.empty()) {
+                    if (item.type == DockAppType::Finder) {
+                        item.iconPath = L"C:\\Windows\\explorer.exe";
+                    } else if (item.type == DockAppType::Settings) {
+                        item.iconPath = L"C:\\Windows\\ImmersiveControlPanel\\SystemSettings.exe";
+                    } else if (item.type == DockAppType::Trash) {
+                        item.iconPath = L"C:\\Windows\\System32\\imageres.dll,-54";
+                    } else if (item.type == DockAppType::Explorer) {
+                        item.iconPath = L"C:\\Windows\\explorer.exe";
+                    } else if (item.type == DockAppType::Calculator) {
+                        item.iconPath = L"C:\\Windows\\System32\\calc.exe";
+                    } else if (item.type == DockAppType::ActivityMonitor) {
+                        item.iconPath = L"C:\\Windows\\System32\\Taskmgr.exe";
+                    } else if (item.type == DockAppType::Browser) {
+                        item.iconPath = QueryDefaultBrowserPath();
+                    } else if (item.type == DockAppType::Terminal) {
+                        item.iconPath = L"wt.exe";
+                    } else if (item.type == DockAppType::CodeEditor) {
+                        item.iconPath = L"code.exe";
+                    }
+                }
+
                 m_items.push_back(item);
             }
         }
@@ -1155,14 +1326,10 @@ namespace Aqua {
     void Dock::PinApplication(const std::wstring& filePath) {
         if (filePath.empty()) return;
 
-        size_t lastSlash = filePath.find_last_of(L"\\/");
-        std::wstring fileName = (lastSlash != std::wstring::npos) ? filePath.substr(lastSlash + 1) : filePath;
-        size_t extPos = fileName.rfind(L'.');
-        std::wstring appName = (extPos != std::wstring::npos) ? fileName.substr(0, extPos) : fileName;
-
         DockItem newItem;
         newItem.type = DockAppType::CustomApp;
-        newItem.name = appName;
+        newItem.isPinned = true;
+        newItem.name = IconManager::Instance().GetAppFriendlyName(filePath);
         newItem.executePath = filePath;
         newItem.executeArgs = L"";
         newItem.iconPath = filePath;
@@ -1170,9 +1337,9 @@ namespace Aqua {
         newItem.targetScale = 1.0f;
         newItem.currentScale = 1.0f;
 
-        // Insert before Separator if one exists
+        // Insert before Separator or Trash
         auto it = std::find_if(m_items.begin(), m_items.end(), [](const DockItem& itm) {
-            return itm.type == DockAppType::Separator;
+            return itm.type == DockAppType::Separator || itm.type == DockAppType::Trash;
         });
 
         if (it != m_items.end()) {
@@ -1181,6 +1348,7 @@ namespace Aqua {
             m_items.push_back(newItem);
         }
 
+        AdjustWindowWidthForItems();
         CalculateLayout();
         SaveConfiguration();
         Render();
@@ -1189,7 +1357,13 @@ namespace Aqua {
     void Dock::RemoveItem(int index) {
         if (index >= 0 && index < static_cast<int>(m_items.size())) {
             if (m_items[index].type != DockAppType::Finder && m_items[index].type != DockAppType::Trash) {
-                m_items.erase(m_items.begin() + index);
+                if (m_items[index].isRunning) {
+                    // Keep running app visible as an unpinned dynamic item until it closes
+                    m_items[index].isPinned = false;
+                } else {
+                    m_items.erase(m_items.begin() + index);
+                }
+                AdjustWindowWidthForItems();
                 CalculateLayout();
                 SaveConfiguration();
                 Render();
@@ -1201,7 +1375,7 @@ namespace Aqua {
         HMENU hMenu = CreatePopupMenu();
 
         bool hasItem = (itemIndex >= 0 && itemIndex < static_cast<int>(m_items.size()));
-        const DockItem* pItem = hasItem ? &m_items[itemIndex] : nullptr;
+        DockItem* pItem = hasItem ? &m_items[itemIndex] : nullptr;
 
         std::vector<HWND> runningHwnds;
         if (pItem && pItem->type != DockAppType::Separator) {
@@ -1222,11 +1396,11 @@ namespace Aqua {
             }
             AppendMenuW(hMenu, MF_SEPARATOR, 0, nullptr);
 
-            UINT uFlags = MF_STRING;
-            if (pItem->type == DockAppType::Finder || pItem->type == DockAppType::Trash) {
-                uFlags |= MF_GRAYED;
+            if (!pItem->isPinned) {
+                AppendMenuW(hMenu, MF_STRING, 5007, L"Keep in Dock");
+            } else if (pItem->type != DockAppType::Finder && pItem->type != DockAppType::Trash) {
+                AppendMenuW(hMenu, MF_STRING, 5003, L"Remove from Dock");
             }
-            AppendMenuW(hMenu, uFlags, 5003, L"Remove from Dock");
             AppendMenuW(hMenu, MF_SEPARATOR, 0, nullptr);
         }
 
@@ -1266,6 +1440,10 @@ namespace Aqua {
             for (HWND h : runningHwnds) {
                 PostMessageW(h, WM_CLOSE, 0, 0);
             }
+        } else if (cmd == 5007 && hasItem) {
+            m_items[itemIndex].isPinned = true;
+            SaveConfiguration();
+            m_needsRedraw = true;
         } else if (cmd == 5002 && pItem) {
             ShellExecuteW(nullptr, L"open", L"explorer.exe", (L"/select,\"" + pItem->executePath + L"\"").c_str(), nullptr, SW_SHOWNORMAL);
         } else if (cmd == 5003 && hasItem) {

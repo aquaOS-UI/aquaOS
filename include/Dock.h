@@ -23,12 +23,15 @@ namespace Aqua {
     };
 
     struct DockItem {
-        DockAppType type;
+        DockAppType type = DockAppType::CustomApp;
         std::wstring name;
         std::wstring executePath;
         std::wstring executeArgs;
         std::wstring iconPath;
         bool isRunning = false;
+        bool isPinned = true;
+        HWND primaryHwnd = nullptr;
+        std::wstring appKey;
 
         // Dynamic layout & physics
         float targetScale = 1.0f;
@@ -73,6 +76,7 @@ namespace Aqua {
         LRESULT HandleMessage(HWND hwnd, UINT msg, WPARAM wParam, LPARAM lParam);
 
         void CalculateLayout();
+        void AdjustWindowWidthForItems();
         void DrawIcon(ID2D1DeviceContext* ctx, const DockItem& item, float x, float y, float size);
         void DrawTooltip(ID2D1DeviceContext* ctx, const std::wstring& text, float centerX, float topY);
         void ShowContextMenu(int itemIndex, int screenX, int screenY);

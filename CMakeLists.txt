@@ -65,6 +65,7 @@ target_link_libraries(AquaShell PRIVATE
     powrprof
     comctl32
     comdlg32
+    version
 )
 
 if (MSVC)
