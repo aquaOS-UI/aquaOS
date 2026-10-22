@@ -324,3 +324,12 @@ Launch `run.bat` or run the executable directly:
 .\scripts\run.bat
 ```
 
+---
+
+## 📜 Documentation & Policies
+
+- **[Changelog](CHANGELOG.md):** Detailed release notes and version history (see [v0.0.1 Release Notes](CHANGELOG.md#001---2026-10-22)).
+- **[Contributing Guide](CONTRIBUTING.md):** Guidelines for codebase architecture, code formatting, and pull requests.
+- **[Security Policy](SECURITY.md):** Vulnerability reporting channels, disclosure policies, and defense-in-depth measures.
+- **[License](LICENSE):** Distributed under the permissive **MIT License**. Copyright &copy; 2026 AquaOS Team & Contributors.
+
