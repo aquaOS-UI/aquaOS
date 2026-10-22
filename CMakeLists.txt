@@ -42,6 +42,7 @@ set(UI_SOURCES
     src/ui/TopBar.cpp
     src/ui/ControlCenter.cpp
     src/ui/NotificationCenter.cpp
+    src/ui/NotificationBanner.cpp
     src/ui/Launchpad.cpp
     src/ui/Spotlight.cpp
     src/ui/MissionControl.cpp
@@ -53,6 +54,7 @@ set(UI_HEADERS
     include/ui/TopBar.h
     include/ui/ControlCenter.h
     include/ui/NotificationCenter.h
+    include/ui/NotificationBanner.h
     include/ui/Launchpad.h
     include/ui/Spotlight.h
     include/ui/MissionControl.h
@@ -65,6 +67,7 @@ set(SERVICES_SOURCES
     src/services/QuickLook.cpp
     src/services/AppCatalogService.cpp
     src/services/MediaControllerService.cpp
+    src/services/NotificationService.cpp
 )
 
 set(SERVICES_HEADERS
@@ -73,6 +76,7 @@ set(SERVICES_HEADERS
     include/services/QuickLook.h
     include/services/AppCatalogService.h
     include/services/MediaControllerService.h
+    include/services/NotificationService.h
 )
 
 set(APP_SOURCES

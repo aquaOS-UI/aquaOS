@@ -1,6 +1,7 @@
 #include "MissionControl.h"
 #include "IconManager.h"
 #include "SystemInfo.h"
+#include <shobjidl.h>
 #include <algorithm>
 #include <cmath>
 
@@ -179,19 +180,31 @@ namespace Aqua {
     struct EnumWinContext {
         MissionControl* pThis;
         std::vector<HWND> hwnds;
+        IVirtualDesktopManager* pVdm = nullptr;
     };
 
     void MissionControl::CollectWindows() {
         ClearThumbnails();
         m_cards.clear();
 
-        EnumWinContext ctx = { this, {} };
+        IVirtualDesktopManager* pVdm = nullptr;
+        CoCreateInstance(CLSID_VirtualDesktopManager, nullptr, CLSCTX_INPROC_SERVER, IID_PPV_ARGS(&pVdm));
+
+        EnumWinContext ctx = { this, {}, pVdm };
 
         EnumWindows([](HWND hwnd, LPARAM lParam) -> BOOL {
             auto* pCtx = reinterpret_cast<EnumWinContext*>(lParam);
 
             if (!IsWindow(hwnd) || !IsWindowVisible(hwnd)) return TRUE;
             if (hwnd == pCtx->pThis->GetHwnd()) return TRUE;
+
+            // Virtual Desktop check: filter windows to current desktop
+            if (pCtx->pVdm) {
+                BOOL onCurrent = TRUE;
+                if (SUCCEEDED(pCtx->pVdm->IsWindowOnCurrentVirtualDesktop(hwnd, &onCurrent))) {
+                    if (!onCurrent) return TRUE;
+                }
+            }
 
             // Exclude tool windows and child windows
             LONG_PTR exStyle = GetWindowLongPtrW(hwnd, GWL_EXSTYLE);
@@ -264,17 +277,53 @@ namespace Aqua {
 
             m_cards.push_back(card);
         }
+
+        if (pVdm) {
+            pVdm->Release();
+            pVdm = nullptr;
+        }
     }
 
     void MissionControl::CalculateLayout() {
-        if (m_cards.empty()) return;
-
         auto monitors = MonitorManager::GetMonitors();
         if (monitors.empty()) {
             MonitorData defMon;
             defMon.rcMonitor = { m_vx, m_vy, m_vx + m_screenWidth, m_vy + m_screenHeight };
             monitors.push_back(defMon);
         }
+
+        // 1. Layout Top Spaces Bar
+        m_spaces.clear();
+        float spaceW = 108.0f * m_dpiScale;
+        float spaceH = 64.0f * m_dpiScale;
+        float gap = 12.0f * m_dpiScale;
+        float addBtnW = 30.0f * m_dpiScale;
+        float totalSpacesW = static_cast<float>(m_spaceCount) * spaceW + static_cast<float>(m_spaceCount - 1) * gap + gap + addBtnW;
+
+        float mon0LocalX = static_cast<float>(monitors[0].rcMonitor.left - m_vx);
+        float mon0LocalY = static_cast<float>(monitors[0].rcMonitor.top - m_vy);
+        float mon0LocalW = static_cast<float>(monitors[0].rcMonitor.right - monitors[0].rcMonitor.left);
+        float spacesStartX = mon0LocalX + (mon0LocalW - totalSpacesW) * 0.5f;
+        float spacesStartY = mon0LocalY + 16.0f * m_dpiScale;
+
+        for (int i = 0; i < m_spaceCount; ++i) {
+            SpaceItem space;
+            space.id = i + 1;
+            space.name = L"Desktop " + std::to_wstring(i + 1);
+            float sx = spacesStartX + static_cast<float>(i) * (spaceW + gap);
+            space.rect = D2D1::RectF(sx, spacesStartY, sx + spaceW, spacesStartY + spaceH);
+            space.thumbRect = D2D1::RectF(sx + 4.0f * m_dpiScale, spacesStartY + 4.0f * m_dpiScale, sx + spaceW - 4.0f * m_dpiScale, spacesStartY + 44.0f * m_dpiScale);
+            space.isActive = (i == m_currentSpace);
+            space.isHovered = false;
+            m_spaces.push_back(space);
+        }
+
+        float addX = spacesStartX + static_cast<float>(m_spaceCount) * (spaceW + gap);
+        float addY = spacesStartY + (spaceH - addBtnW) * 0.5f;
+        m_addSpaceRect = D2D1::RectF(addX, addY, addX + addBtnW, addY + addBtnW);
+        m_isAddSpaceHovered = false;
+
+        if (m_cards.empty()) return;
 
         // Partition cards by monitor
         std::vector<std::vector<size_t>> monitorCards(monitors.size());
@@ -301,7 +350,7 @@ namespace Aqua {
             float monLocalW = static_cast<float>(mon.rcMonitor.right - mon.rcMonitor.left);
             float monLocalH = static_cast<float>(mon.rcMonitor.bottom - mon.rcMonitor.top);
 
-            float topMargin = monLocalY + 85.0f * m_dpiScale;
+            float topMargin = monLocalY + 105.0f * m_dpiScale;
             float bottomMargin = 60.0f * m_dpiScale;
             float sideMargin = 70.0f * m_dpiScale;
 
@@ -447,6 +496,52 @@ namespace Aqua {
         SetTimer(m_hwnd, 1001, 120, nullptr);
     }
 
+    void MissionControl::SwitchToSpace(int targetIdx) {
+        if (targetIdx < 0 || targetIdx >= m_spaceCount) return;
+        int delta = targetIdx - m_currentSpace;
+        m_currentSpace = targetIdx;
+
+        if (delta != 0) {
+            WORD key = (delta > 0) ? VK_RIGHT : VK_LEFT;
+            int steps = std::abs(delta);
+            for (int i = 0; i < steps; ++i) {
+                INPUT inputs[6] = {};
+                inputs[0].type = INPUT_KEYBOARD; inputs[0].ki.wVk = VK_LWIN;
+                inputs[1].type = INPUT_KEYBOARD; inputs[1].ki.wVk = VK_CONTROL;
+                inputs[2].type = INPUT_KEYBOARD; inputs[2].ki.wVk = key;
+
+                inputs[3].type = INPUT_KEYBOARD; inputs[3].ki.wVk = key; inputs[3].ki.dwFlags = KEYEVENTF_KEYUP;
+                inputs[4].type = INPUT_KEYBOARD; inputs[4].ki.wVk = VK_CONTROL; inputs[4].ki.dwFlags = KEYEVENTF_KEYUP;
+                inputs[5].type = INPUT_KEYBOARD; inputs[5].ki.wVk = VK_LWIN; inputs[5].ki.dwFlags = KEYEVENTF_KEYUP;
+
+                SendInput(6, inputs, sizeof(INPUT));
+                Sleep(35);
+            }
+        }
+
+        Hide();
+    }
+
+    void MissionControl::AddNewSpace() {
+        if (m_spaceCount >= 8) return;
+        m_spaceCount++;
+        m_currentSpace = m_spaceCount - 1;
+
+        INPUT inputs[6] = {};
+        inputs[0].type = INPUT_KEYBOARD; inputs[0].ki.wVk = VK_LWIN;
+        inputs[1].type = INPUT_KEYBOARD; inputs[1].ki.wVk = VK_CONTROL;
+        inputs[2].type = INPUT_KEYBOARD; inputs[2].ki.wVk = 'D';
+
+        inputs[3].type = INPUT_KEYBOARD; inputs[3].ki.wVk = 'D'; inputs[3].ki.dwFlags = KEYEVENTF_KEYUP;
+        inputs[4].type = INPUT_KEYBOARD; inputs[4].ki.wVk = VK_CONTROL; inputs[4].ki.dwFlags = KEYEVENTF_KEYUP;
+        inputs[5].type = INPUT_KEYBOARD; inputs[5].ki.wVk = VK_LWIN; inputs[5].ki.dwFlags = KEYEVENTF_KEYUP;
+
+        SendInput(6, inputs, sizeof(INPUT));
+
+        CalculateLayout();
+        Render();
+    }
+
     void MissionControl::Render() {
         if (!m_visible) return;
 
@@ -454,51 +549,83 @@ namespace Aqua {
         if (!ctx) return;
 
         // 1. Frosted Dark Acrylic Backdrop
-        ctx->Clear(D2D1::ColorF(0.06f, 0.06f, 0.08f, 0.85f));
+        ctx->Clear(D2D1::ColorF(0.06f, 0.06f, 0.08f, 0.88f));
 
         float cx = static_cast<float>(m_screenWidth) * 0.5f;
 
-        // 2. macOS Top Spaces Bar on each monitor
-        auto monitors = MonitorManager::GetMonitors();
-        if (monitors.empty()) {
-            MonitorData defMon;
-            defMon.rcMonitor = { m_vx, m_vy, m_vx + m_screenWidth, m_vy + m_screenHeight };
-            monitors.push_back(defMon);
-        }
+        // 2. macOS Top Spaces Bar (Virtual Desktops Shelf)
+        if (!m_spaces.empty()) {
+            float shelfPadX = 14.0f * m_dpiScale;
+            float shelfPadY = 8.0f * m_dpiScale;
+            float shelfLeft = m_spaces.front().rect.left - shelfPadX;
+            float shelfTop = m_spaces.front().rect.top - shelfPadY;
+            float shelfRight = m_addSpaceRect.right + shelfPadX;
+            float shelfBottom = m_spaces.front().rect.bottom + shelfPadY;
 
-        for (size_t m = 0; m < monitors.size(); ++m) {
-            const auto& mon = monitors[m];
-            float monLocalX = static_cast<float>(mon.rcMonitor.left - m_vx);
-            float monLocalW = static_cast<float>(mon.rcMonitor.right - mon.rcMonitor.left);
-            float monLocalY = static_cast<float>(mon.rcMonitor.top - m_vy);
-            float cx = monLocalX + monLocalW * 0.5f;
-
-            float spacesW = 280.0f * m_dpiScale;
-            float spacesH = 36.0f * m_dpiScale;
-            float spacesY = monLocalY + 24.0f * m_dpiScale;
-            D2D1_ROUNDED_RECT spacesPill = D2D1::RoundedRect(
-                D2D1::RectF(cx - spacesW * 0.5f, spacesY, cx + spacesW * 0.5f, spacesY + spacesH),
-                spacesH * 0.5f, spacesH * 0.5f
+            D2D1_ROUNDED_RECT shelfRect = D2D1::RoundedRect(
+                D2D1::RectF(shelfLeft, shelfTop, shelfRight, shelfBottom),
+                16.0f * m_dpiScale, 16.0f * m_dpiScale
             );
+            ctx->FillRoundedRectangle(shelfRect, m_brushCardBg.Get());
+            ctx->DrawRoundedRectangle(shelfRect, m_brushBorder.Get(), 1.0f);
 
-            ctx->FillRoundedRectangle(spacesPill, m_brushCardBg.Get());
-            ctx->DrawRoundedRectangle(spacesPill, m_brushBorder.Get(), 1.0f);
+            // Draw each Space thumbnail capsule
+            for (size_t si = 0; si < m_spaces.size(); ++si) {
+                const auto& space = m_spaces[si];
 
-            // Active Space Badge
-            float badgeW = 120.0f * m_dpiScale;
-            float badgeH = 26.0f * m_dpiScale;
-            D2D1_ROUNDED_RECT activeBadge = D2D1::RoundedRect(
-                D2D1::RectF(cx - badgeW * 0.5f, spacesY + (spacesH - badgeH) * 0.5f, cx + badgeW * 0.5f, spacesY + (spacesH + badgeH) * 0.5f),
-                badgeH * 0.5f, badgeH * 0.5f
-            );
-            ctx->FillRoundedRectangle(activeBadge, m_brushCardBgHover.Get());
-            ctx->DrawRoundedRectangle(activeBadge, m_brushBorder.Get(), 1.0f);
+                D2D1_ROUNDED_RECT spaceThumb = D2D1::RoundedRect(space.thumbRect, 6.0f * m_dpiScale, 6.0f * m_dpiScale);
 
-            if (m_formatHeader) {
-                wchar_t deskLabel[32];
-                swprintf_s(deskLabel, L"Display %zu", m + 1);
-                ctx->DrawTextW(deskLabel, static_cast<UINT32>(wcslen(deskLabel)), m_formatHeader.Get(), activeBadge.rect, m_brushTextPrimary.Get());
+                if (space.isActive) {
+                    ctx->FillRoundedRectangle(spaceThumb, m_brushCardBgHover.Get());
+                    ctx->DrawRoundedRectangle(spaceThumb, m_brushAccent.Get(), 2.0f * m_dpiScale);
+
+                    // Miniature interior window simulation
+                    float mwW = (space.thumbRect.right - space.thumbRect.left) * 0.55f;
+                    float mwH = (space.thumbRect.bottom - space.thumbRect.top) * 0.55f;
+                    float mwX = space.thumbRect.left + ((space.thumbRect.right - space.thumbRect.left) - mwW) * 0.5f;
+                    float mwY = space.thumbRect.top + ((space.thumbRect.bottom - space.thumbRect.top) - mwH) * 0.5f;
+                    D2D1_RECT_F miniWin = D2D1::RectF(mwX, mwY, mwX + mwW, mwY + mwH);
+                    ctx->FillRectangle(miniWin, m_brushCardBg.Get());
+                    ctx->DrawRectangle(miniWin, m_brushBorder.Get(), 1.0f);
+                } else if (space.isHovered) {
+                    ctx->FillRoundedRectangle(spaceThumb, m_brushCardBgHover.Get());
+                    ctx->DrawRoundedRectangle(spaceThumb, m_brushBorder.Get(), 1.5f * m_dpiScale);
+                } else {
+                    ctx->FillRoundedRectangle(spaceThumb, m_brushCardBg.Get());
+                    ctx->DrawRoundedRectangle(spaceThumb, m_brushBorder.Get(), 1.0f);
+                }
+
+                // Desktop Label
+                if (m_formatHeader) {
+                    D2D1_RECT_F labelBox = D2D1::RectF(
+                        space.rect.left,
+                        space.thumbRect.bottom + 2.0f * m_dpiScale,
+                        space.rect.right,
+                        space.rect.bottom
+                    );
+                    auto textBrush = space.isActive ? m_brushAccent.Get() : m_brushTextSecondary.Get();
+                    ctx->DrawTextW(space.name.c_str(), static_cast<UINT32>(space.name.length()), m_formatHeader.Get(), labelBox, textBrush);
+                }
             }
+
+            // Draw Add Space (+) Button
+            float addR = (m_addSpaceRect.right - m_addSpaceRect.left) * 0.5f;
+            D2D1_POINT_2F addCenter = D2D1::Point2F(m_addSpaceRect.left + addR, m_addSpaceRect.top + addR);
+            ctx->FillEllipse(D2D1::Ellipse(addCenter, addR, addR), m_isAddSpaceHovered ? m_brushCardBgHover.Get() : m_brushCardBg.Get());
+            ctx->DrawEllipse(D2D1::Ellipse(addCenter, addR, addR), m_isAddSpaceHovered ? m_brushAccent.Get() : m_brushBorder.Get(), 1.0f);
+
+            float crossLen = 5.0f * m_dpiScale;
+            auto crossBrush = m_isAddSpaceHovered ? m_brushAccent.Get() : m_brushTextSecondary.Get();
+            ctx->DrawLine(
+                D2D1::Point2F(addCenter.x - crossLen, addCenter.y),
+                D2D1::Point2F(addCenter.x + crossLen, addCenter.y),
+                crossBrush, 1.8f * m_dpiScale
+            );
+            ctx->DrawLine(
+                D2D1::Point2F(addCenter.x, addCenter.y - crossLen),
+                D2D1::Point2F(addCenter.x, addCenter.y + crossLen),
+                crossBrush, 1.8f * m_dpiScale
+            );
         }
 
         // 3. Render Window Cards
@@ -665,6 +792,23 @@ namespace Aqua {
                 needRender = true;
             }
 
+            // Spaces Bar Hover Detection
+            for (auto& space : m_spaces) {
+                bool hovered = (mx >= space.rect.left && mx <= space.rect.right &&
+                                my >= space.rect.top && my <= space.rect.bottom);
+                if (space.isHovered != hovered) {
+                    space.isHovered = hovered;
+                    needRender = true;
+                }
+            }
+
+            bool addHovered = (mx >= m_addSpaceRect.left && mx <= m_addSpaceRect.right &&
+                               my >= m_addSpaceRect.top && my <= m_addSpaceRect.bottom);
+            if (m_isAddSpaceHovered != addHovered) {
+                m_isAddSpaceHovered = addHovered;
+                needRender = true;
+            }
+
             TRACKMOUSEEVENT tme = { sizeof(TRACKMOUSEEVENT), TME_LEAVE, m_hwnd, 0 };
             TrackMouseEvent(&tme);
 
@@ -683,6 +827,16 @@ namespace Aqua {
                     needRender = true;
                 }
             }
+            for (auto& space : m_spaces) {
+                if (space.isHovered) {
+                    space.isHovered = false;
+                    needRender = true;
+                }
+            }
+            if (m_isAddSpaceHovered) {
+                m_isAddSpaceHovered = false;
+                needRender = true;
+            }
             m_hoveredIndex = -1;
             if (needRender) {
                 Render();
@@ -693,6 +847,23 @@ namespace Aqua {
         case WM_LBUTTONDOWN: {
             float mx = static_cast<float>(GET_X_LPARAM(lParam));
             float my = static_cast<float>(GET_Y_LPARAM(lParam));
+
+            // Check Add Space click
+            if (mx >= m_addSpaceRect.left && mx <= m_addSpaceRect.right &&
+                my >= m_addSpaceRect.top && my <= m_addSpaceRect.bottom) {
+                AddNewSpace();
+                return 0;
+            }
+
+            // Check Spaces Bar click
+            for (size_t i = 0; i < m_spaces.size(); ++i) {
+                const auto& space = m_spaces[i];
+                if (mx >= space.rect.left && mx <= space.rect.right &&
+                    my >= space.rect.top && my <= space.rect.bottom) {
+                    SwitchToSpace(static_cast<int>(i));
+                    return 0;
+                }
+            }
 
             for (size_t i = 0; i < m_cards.size(); ++i) {
                 auto& card = m_cards[i];

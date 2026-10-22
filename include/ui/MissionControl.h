@@ -22,6 +22,15 @@ namespace Aqua {
         float hoverAnim = 0.0f;
     };
 
+    struct SpaceItem {
+        int id = 1;
+        std::wstring name;
+        D2D1_RECT_F rect = {};
+        D2D1_RECT_F thumbRect = {};
+        bool isHovered = false;
+        bool isActive = false;
+    };
+
     class MissionControl {
     public:
         MissionControl();
@@ -44,6 +53,8 @@ namespace Aqua {
         void ClearThumbnails();
         void ActivateWindow(HWND targetHwnd);
         void CloseTargetWindow(HWND targetHwnd);
+        void SwitchToSpace(int spaceIndex);
+        void AddNewSpace();
         void Render();
 
         HWND m_hwnd = nullptr;
@@ -54,6 +65,12 @@ namespace Aqua {
         float m_dpiScale = 1.0f;
         bool m_visible = false;
         int m_hoveredIndex = -1;
+
+        int m_currentSpace = 0;
+        int m_spaceCount = 2;
+        std::vector<SpaceItem> m_spaces;
+        D2D1_RECT_F m_addSpaceRect = {};
+        bool m_isAddSpaceHovered = false;
 
         DCompSurface m_surface;
 

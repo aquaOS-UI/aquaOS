@@ -198,8 +198,11 @@ namespace Aqua {
         if (idObject != OBJID_WINDOW || idChild != CHILDID_SELF) return;
         if (!hwnd || !IsWindow(hwnd)) return;
 
+        HWND root = GetAncestor(hwnd, GA_ROOT);
+        if (!root) root = hwnd;
+
         wchar_t className[256] = {};
-        GetClassNameW(hwnd, className, 256);
+        GetClassNameW(root, className, 256);
         std::wstring cls(className);
 
         // Filter out AquaShell windows and Windows shell surfaces
@@ -209,7 +212,7 @@ namespace Aqua {
         }
 
         if (event == EVENT_SYSTEM_MOVESIZESTART) {
-            Instance().StartTracking(hwnd);
+            Instance().StartTracking(root);
         } else if (event == EVENT_SYSTEM_MOVESIZEEND) {
             Instance().StopTracking();
         }
@@ -249,8 +252,8 @@ namespace Aqua {
             mi.rcMonitor = { 0, 0, m_screenWidth, m_screenHeight };
         }
 
-        float edgeThreshold = 18.0f * m_dpiScale;
-        float cornerThreshold = 45.0f * m_dpiScale;
+        float edgeThreshold = 30.0f * m_dpiScale;
+        float cornerThreshold = 80.0f * m_dpiScale;
 
         SnapZone zone = SnapZone::None;
 
@@ -356,14 +359,21 @@ namespace Aqua {
 
         ctx->Clear(D2D1::ColorF(0.0f, 0.0f, 0.0f, 0.0f));
 
-        float radius = 12.0f * m_dpiScale;
+        float radius = 16.0f * m_dpiScale;
         D2D1_ROUNDED_RECT round = D2D1::RoundedRect(m_animRect, radius, radius);
 
-        // Translucent macOS Accent Blue Fill
+        // Translucent macOS Sequoia Accent Blue Fill
         ctx->FillRoundedRectangle(round, m_brushPreviewFill.Get());
 
         // Outer Glow & Border
-        ctx->DrawRoundedRectangle(round, m_brushPreviewBorder.Get(), 2.0f * m_dpiScale);
+        ctx->DrawRoundedRectangle(round, m_brushPreviewBorder.Get(), 2.4f * m_dpiScale);
+
+        // Inner Specular Accent Line
+        D2D1_ROUNDED_RECT innerRound = D2D1::RoundedRect(
+            D2D1::RectF(m_animRect.left + 1.2f, m_animRect.top + 1.2f, m_animRect.right - 1.2f, m_animRect.bottom - 1.2f),
+            radius - 1.2f, radius - 1.2f
+        );
+        ctx->DrawRoundedRectangle(innerRound, m_brushGlow.Get(), 1.0f);
 
         m_surface.EndDraw();
     }

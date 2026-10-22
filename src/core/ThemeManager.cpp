@@ -83,8 +83,33 @@ namespace Aqua {
         UpdateDynamicWallpaper(true);
     }
 
+    const wchar_t* ThemeManager::GetWallpaperStyleName() const {
+        switch (m_style) {
+        case WallpaperStyle::Sonoma:   return L"Sonoma Horizon";
+        case WallpaperStyle::Sequoia:  return L"Sequoia Wilderness";
+        case WallpaperStyle::Ventura:  return L"Ventura Dunes";
+        case WallpaperStyle::Monterey: return L"Monterey Ocean";
+        case WallpaperStyle::BigSur:   return L"Big Sur Coast";
+        default: return L"macOS Dynamic";
+        }
+    }
+
+    TimePhase ThemeManager::GetCurrentTimePhase() const {
+        SYSTEMTIME st = {};
+        GetLocalTime(&st);
+        if (st.wHour >= 5 && st.wHour < 9) {
+            return TimePhase::Dawn;
+        } else if (st.wHour >= 9 && st.wHour < 17) {
+            return TimePhase::Day;
+        } else if (st.wHour >= 17 && st.wHour < 21) {
+            return TimePhase::Sunset;
+        } else {
+            return TimePhase::Night;
+        }
+    }
+
     void ThemeManager::CycleWallpaper() {
-        int next = (static_cast<int>(m_style) + 1) % 4;
+        int next = (static_cast<int>(m_style) + 1) % 5;
         SetWallpaperStyle(static_cast<WallpaperStyle>(next));
     }
 
@@ -153,7 +178,7 @@ namespace Aqua {
     }
 
     // High-performance Direct-memory BMP Wallpaper Generation
-    bool ThemeManager::GenerateWallpaperImage(const std::wstring& outPath, WallpaperStyle style, bool isDark) {
+    bool ThemeManager::GenerateWallpaperImage(const std::wstring& outPath, WallpaperStyle style, TimePhase phase) {
         int w = m_screenWidth;
         int h = m_screenHeight;
         if (w <= 0 || h <= 0) return false;
@@ -164,51 +189,133 @@ namespace Aqua {
 
         switch (style) {
         case WallpaperStyle::Sonoma:
-            if (isDark) {
-                cTop = { 15.0f, 23.0f, 42.0f };   // Slate midnight
-                cMid = { 59.0f, 31.0f, 98.0f };   // Sonoma purple dusk
-                cBot = { 88.0f, 28.0f, 135.0f };  // Deep twilight magenta
-            } else {
+            switch (phase) {
+            case TimePhase::Dawn:
+                cTop = { 70.0f, 95.0f, 160.0f };   // Morning periwinkle
+                cMid = { 195.0f, 120.0f, 175.0f }; // Rose dawn
+                cBot = { 245.0f, 170.0f, 140.0f }; // Warm sunrise apricot
+                break;
+            case TimePhase::Day:
                 cTop = { 33.0f, 147.0f, 176.0f };  // Crisp azure sky
                 cMid = { 86.0f, 185.0f, 218.0f };  // Luminous cyan
                 cBot = { 240.0f, 147.0f, 251.0f }; // Warm morning haze
+                break;
+            case TimePhase::Sunset:
+                cTop = { 45.0f, 25.0f, 85.0f };    // Deep purple dusk
+                cMid = { 185.0f, 55.0f, 90.0f };   // Fiery crimson sunset
+                cBot = { 245.0f, 130.0f, 50.0f };  // Golden amber horizon
+                break;
+            case TimePhase::Night:
+            default:
+                cTop = { 15.0f, 23.0f, 42.0f };    // Slate midnight
+                cMid = { 59.0f, 31.0f, 98.0f };    // Sonoma purple dusk
+                cBot = { 88.0f, 28.0f, 135.0f };   // Deep twilight magenta
+                break;
             }
             break;
 
         case WallpaperStyle::Sequoia:
-            if (isDark) {
-                cTop = { 6.0f, 24.0f, 30.0f };     // Obsidian spruce
-                cMid = { 18.0f, 53.0f, 36.0f };    // Deep pine green
-                cBot = { 28.0f, 40.0f, 38.0f };    // Mist valley
-            } else {
+            switch (phase) {
+            case TimePhase::Dawn:
+                cTop = { 40.0f, 80.0f, 95.0f };    // Morning mist teal
+                cMid = { 95.0f, 135.0f, 110.0f };  // Pale forest green
+                cBot = { 210.0f, 180.0f, 130.0f }; // Canopy morning glow
+                break;
+            case TimePhase::Day:
                 cTop = { 19.0f, 78.0f, 94.0f };    // Emerald lake
                 cMid = { 60.0f, 135.0f, 114.0f };  // Forest green
                 cBot = { 113.0f, 178.0f, 128.0f }; // Meadow daylight
+                break;
+            case TimePhase::Sunset:
+                cTop = { 30.0f, 45.0f, 60.0f };    // Evening alpine slate
+                cMid = { 130.0f, 75.0f, 50.0f };   // Redwood bark amber
+                cBot = { 215.0f, 110.0f, 60.0f };  // Sierra sunset glow
+                break;
+            case TimePhase::Night:
+            default:
+                cTop = { 6.0f, 24.0f, 30.0f };     // Obsidian spruce
+                cMid = { 18.0f, 53.0f, 36.0f };    // Deep pine green
+                cBot = { 28.0f, 40.0f, 38.0f };    // Mist valley
+                break;
             }
             break;
 
         case WallpaperStyle::Ventura:
-            if (isDark) {
-                cTop = { 20.0f, 12.0f, 36.0f };   // Deep dune night
-                cMid = { 46.0f, 20.0f, 55.0f };   // Twilight shadow
-                cBot = { 78.0f, 28.0f, 50.0f };   // Warm horizon
-            } else {
-                cTop = { 58.0f, 28.0f, 113.0f };  // Sky violet
-                cMid = { 215.0f, 109.0f, 119.0f };// Rose dune
-                cBot = { 255.0f, 175.0f, 123.0f };// Golden sand
+            switch (phase) {
+            case TimePhase::Dawn:
+                cTop = { 80.0f, 85.0f, 140.0f };   // Dawn lavender
+                cMid = { 190.0f, 130.0f, 150.0f }; // Pale desert rose
+                cBot = { 245.0f, 195.0f, 150.0f }; // Morning dunes gold
+                break;
+            case TimePhase::Day:
+                cTop = { 58.0f, 28.0f, 113.0f };   // Sky violet
+                cMid = { 215.0f, 109.0f, 119.0f }; // Rose dune
+                cBot = { 255.0f, 175.0f, 123.0f }; // Golden sand
+                break;
+            case TimePhase::Sunset:
+                cTop = { 65.0f, 20.0f, 65.0f };    // Violet dusk
+                cMid = { 210.0f, 60.0f, 65.0f };   // Blazing desert scarlet
+                cBot = { 255.0f, 140.0f, 40.0f };  // Sunken sun orange
+                break;
+            case TimePhase::Night:
+            default:
+                cTop = { 20.0f, 12.0f, 36.0f };    // Deep dune night
+                cMid = { 46.0f, 20.0f, 55.0f };    // Twilight shadow
+                cBot = { 78.0f, 28.0f, 50.0f };    // Warm horizon
+                break;
             }
             break;
 
         case WallpaperStyle::Monterey:
-        default:
-            if (isDark) {
-                cTop = { 10.0f, 14.0f, 28.0f };   // Monterey deep indigo
-                cMid = { 24.0f, 32.0f, 68.0f };   // Oceanic dark
-                cBot = { 64.0f, 22.0f, 84.0f };   // Deep plum
-            } else {
+            switch (phase) {
+            case TimePhase::Dawn:
+                cTop = { 45.0f, 75.0f, 145.0f };   // Pacific morning blue
+                cMid = { 130.0f, 100.0f, 185.0f }; // Marine lilac
+                cBot = { 225.0f, 155.0f, 195.0f }; // Coastal dawn mist
+                break;
+            case TimePhase::Day:
                 cTop = { 0.0f, 114.0f, 255.0f };   // Brilliant blue
                 cMid = { 72.0f, 90.0f, 230.0f };   // Vivid ocean
                 cBot = { 198.0f, 68.0f, 252.0f };  // Radiant lavender
+                break;
+            case TimePhase::Sunset:
+                cTop = { 35.0f, 20.0f, 80.0f };    // Pacific twilight navy
+                cMid = { 155.0f, 40.0f, 120.0f };  // Rich magenta crest
+                cBot = { 240.0f, 90.0f, 110.0f };  // Monterey bay sunset
+                break;
+            case TimePhase::Night:
+            default:
+                cTop = { 10.0f, 14.0f, 28.0f };    // Monterey deep indigo
+                cMid = { 24.0f, 32.0f, 68.0f };    // Oceanic dark
+                cBot = { 64.0f, 22.0f, 84.0f };    // Deep plum
+                break;
+            }
+            break;
+
+        case WallpaperStyle::BigSur:
+        default:
+            switch (phase) {
+            case TimePhase::Dawn:
+                cTop = { 50.0f, 90.0f, 150.0f };   // Bixby Bridge dawn sky
+                cMid = { 160.0f, 115.0f, 160.0f }; // Cliff fog rose
+                cBot = { 240.0f, 175.0f, 135.0f }; // Pacific sunrise glow
+                break;
+            case TimePhase::Day:
+                cTop = { 20.0f, 120.0f, 220.0f };  // Electric California blue
+                cMid = { 230.0f, 70.0f, 90.0f };   // Big Sur wild poppy red
+                cBot = { 245.0f, 170.0f, 50.0f };  // Golden coastal cliffs
+                break;
+            case TimePhase::Sunset:
+                cTop = { 40.0f, 15.0f, 70.0f };    // Ocean sunset indigo
+                cMid = { 190.0f, 45.0f, 60.0f };   // Crimson cliff edge
+                cBot = { 250.0f, 125.0f, 40.0f };  // Pacific golden hour
+                break;
+            case TimePhase::Night:
+            default:
+                cTop = { 8.0f, 12.0f, 25.0f };     // Obsidian coast
+                cMid = { 30.0f, 22.0f, 55.0f };    // Midnight cliff shadow
+                cBot = { 70.0f, 30.0f, 75.0f };    // Deep ocean surge
+                break;
             }
             break;
         }
@@ -285,16 +392,23 @@ namespace Aqua {
     }
 
     void ThemeManager::UpdateDynamicWallpaper(bool force) {
-        SYSTEMTIME st = {};
-        GetLocalTime(&st);
+        TimePhase phase = GetCurrentTimePhase();
+        if (m_mode == ThemeMode::Dark) {
+            if (phase == TimePhase::Day || phase == TimePhase::Dawn) {
+                phase = TimePhase::Night;
+            }
+        } else if (m_mode == ThemeMode::Light) {
+            if (phase == TimePhase::Night || phase == TimePhase::Sunset) {
+                phase = TimePhase::Day;
+            }
+        }
 
-        if (!force && st.wHour == m_lastHour) {
+        if (!force && phase == m_lastPhase) {
             return;
         }
-        m_lastHour = st.wHour;
+        m_lastPhase = phase;
 
-        bool dark = IsDarkMode();
-        if (GenerateWallpaperImage(m_wallpaperCachePath, m_style, dark)) {
+        if (GenerateWallpaperImage(m_wallpaperCachePath, m_style, phase)) {
             SystemParametersInfoW(
                 SPI_SETDESKWALLPAPER,
                 0,
@@ -340,13 +454,15 @@ namespace Aqua {
         std::wstring s2 = L"Sequoia Wilderness" + std::wstring(m_style == WallpaperStyle::Sequoia ? L"  ✓" : L"");
         std::wstring s3 = L"Ventura Dunes" + std::wstring(m_style == WallpaperStyle::Ventura ? L"  ✓" : L"");
         std::wstring s4 = L"Monterey Ocean" + std::wstring(m_style == WallpaperStyle::Monterey ? L"  ✓" : L"");
+        std::wstring s5 = L"Big Sur Coast" + std::wstring(m_style == WallpaperStyle::BigSur ? L"  ✓" : L"");
 
         AppendMenuW(hWallMenu, MF_STRING, 5101, s1.c_str());
         AppendMenuW(hWallMenu, MF_STRING, 5102, s2.c_str());
         AppendMenuW(hWallMenu, MF_STRING, 5103, s3.c_str());
         AppendMenuW(hWallMenu, MF_STRING, 5104, s4.c_str());
+        AppendMenuW(hWallMenu, MF_STRING, 5105, s5.c_str());
         AppendMenuW(hWallMenu, MF_SEPARATOR, 0, nullptr);
-        AppendMenuW(hWallMenu, MF_STRING, 5105, L"Cycle Next Wallpaper\tCtrl+Alt+W");
+        AppendMenuW(hWallMenu, MF_STRING, 5106, L"Cycle Next Wallpaper\tCtrl+Alt+W");
 
         AppendMenuW(hMenu, MF_POPUP, reinterpret_cast<UINT_PTR>(hWallMenu), L"Change Wallpaper");
 
@@ -391,6 +507,8 @@ namespace Aqua {
         } else if (cmd == 5104) {
             SetWallpaperStyle(WallpaperStyle::Monterey);
         } else if (cmd == 5105) {
+            SetWallpaperStyle(WallpaperStyle::BigSur);
+        } else if (cmd == 5106) {
             CycleWallpaper();
         } else if (cmd == 5201) {
             SetThemeMode(ThemeMode::Light);

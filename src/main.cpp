@@ -17,6 +17,7 @@
 #include "QuickLook.h"
 #include "ThemeManager.h"
 #include "LockScreen.h"
+#include "NotificationService.h"
 
 int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine, int nCmdShow) {
     // 1. Single Instance Guard
@@ -192,6 +193,11 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
         return 1;
     }
 
+    if (!Aqua::NotificationService::Instance().Initialize(hInstance, screenWidth, screenHeight)) {
+        MessageBoxW(nullptr, L"Failed to initialize AquaOS Notification Service.", L"AquaOS Error", MB_OK | MB_ICONERROR);
+        return 1;
+    }
+
     // 6. Connect Inter-component Callbacks
     dock.SetSpotlightCallback([&]() {
         controlCenter.Hide();
@@ -255,6 +261,13 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
         bar->Show();
     }
     dock.Show();
+
+    // Welcome Notification
+    Aqua::NotificationService::Instance().PostNotification(
+        L"AquaOS Sequoia",
+        L"macOS Desktop Shell Ready",
+        L"Press Alt+Space for Spotlight • F3 for Mission Control"
+    );
 
     // 10. High-performance Win32 Message Loop
     MSG msg = {};
@@ -320,9 +333,19 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
                 continue;
             } else if (msg.wParam == 120) {
                 Aqua::ThemeManager::Instance().ToggleTheme();
+                Aqua::NotificationService::Instance().PostNotification(
+                    L"System Appearance",
+                    L"Theme Switched",
+                    Aqua::ThemeManager::Instance().IsDarkMode() ? L"Dark Mode active" : L"Light Mode active"
+                );
                 continue;
             } else if (msg.wParam == 121) {
                 Aqua::ThemeManager::Instance().CycleWallpaper();
+                Aqua::NotificationService::Instance().PostNotification(
+                    L"Wallpaper",
+                    L"Dynamic Wallpaper Changed",
+                    Aqua::ThemeManager::Instance().GetWallpaperStyleName()
+                );
                 continue;
             } else if (msg.wParam == 125) {
                 Aqua::LockScreen::Instance().Toggle();
@@ -347,6 +370,7 @@ int WINAPI wWinMain(HINSTANCE hInstance, HINSTANCE hPrevInstance, PWSTR pCmdLine
     UnregisterHotKey(nullptr, 120);
     UnregisterHotKey(nullptr, 121);
     UnregisterHotKey(nullptr, 125);
+    Aqua::NotificationService::Instance().Shutdown();
     Aqua::LockScreen::Instance().Shutdown();
     Aqua::ThemeManager::Instance().Shutdown();
     Aqua::WindowTiler::Instance().Shutdown();

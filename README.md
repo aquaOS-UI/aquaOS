@@ -87,11 +87,13 @@ It replicates the fluid macOS desktop environment (Top Menu Bar, Parabolic Magni
 - **Direct Sound Volume Control:** Reads and updates Windows master volume in real-time via the Windows CoreAudio API (`IAudioEndpointVolume`).
 - **Display Brightness Slider:** Smooth interactive brightness control.
 
-### 5. macOS Mission Control / Window Grid (`MissionControl`)
+### 5. macOS Mission Control / Window Grid & Spaces Bar (`MissionControl`)
 - **Global Hotkey:** Press **`F3`** (or click Launchpad in Dock or View -> Mission Control).
+- **Top Spaces Bar (Virtual Desktops Shelf):** Displays interactive macOS Sonoma/Sequoia style desktop capsules ("Desktop 1", "Desktop 2", etc.) with active desktop indicator, live desktop previews, and an **Add Space (`+`)** button.
+- **Seamless Workspace Switching:** Clicking any desktop capsule switches virtual workspaces instantly via Windows Virtual Desktop shortcuts.
+- **Desktop Isolation:** Integrated with `IVirtualDesktopManager` to filter window cards strictly to the active virtual workspace.
 - **Hardware-Accelerated DWM Live Thumbnails:** Uses Windows Desktop Window Manager (`DwmRegisterThumbnail` + `DwmUpdateThumbnailProperties`) to stream live, 60+ FPS composited thumbnails of all running application windows.
 - **Smart Adaptive Grid Layout:** Dynamically arranges open windows into optimal macOS-style columns and rows based on window aspect ratio.
-- **Spaces / Desktops Bar:** Displays top macOS Sonoma/Sequoia style "Desktop 1" spaces pill.
 - **Card Controls:**
   - Hover over any window preview to see its glowing accent blue border and title.
   - Hover over the top-right of a card to reveal the macOS red close button (`X`) to terminate a window directly from Mission Control.
@@ -162,19 +164,24 @@ It replicates the fluid macOS desktop environment (Top Menu Bar, Parabolic Magni
   - **Dismiss:** Tap `Spacebar` or `Escape` or click the close button (`×`).
 
 ### 11. macOS Dynamic Wallpapers & Theme Engine (`ThemeManager`)
-- **4 Dynamic macOS Wallpapers:**
+- **5 Dynamic macOS Wallpaper Styles:**
   - **Sonoma Horizon:** Sky azure and luminous sunlight transitioning to dusk magenta.
   - **Sequoia Wilderness:** Deep emerald lake and spruce green blending to misty twilight forest.
   - **Ventura Dunes:** Warm desert dawn and rose dunes melting into midnight starlight.
   - **Monterey Ocean:** Vibrant ocean blue ribbons and neon violet twilight.
-- **Time-Adaptive Day & Night Transitions:** Wallpapers automatically calculate atmospheric day/night transitions and shift dynamically via `SPI_SETDESKWALLPAPER`.
+  - **Big Sur Coast:** Electric Pacific blue, wild poppy scarlet, and golden coastal cliffs.
+- **4-Phase Solar Engine (Dawn, Day, Sunset, Night):** Automatically shifts color gradients across the day based on system local time:
+  - *Dawn (05:00 - 08:59):* Soft morning glow, rose mist, and apricot sunrise horizon.
+  - *Day (09:00 - 16:59):* Crisp daylight skies with vivid high-contrast accents.
+  - *Sunset / Golden Hour (17:00 - 20:59):* Blazing scarlet, golden amber, and deep dusk plum.
+  - *Night (21:00 - 04:59):* Midnight obsidian, deep oceanic indigo, and dark nebula tones.
 - **System-Wide Light / Dark Theme Switching:**
   - Centralized palette with frosted acrylic translucencies and high-contrast typography.
   - Instant one-click toggle via the **"Dark Mode"** tile in Control Center.
   - Global Hotkeys:
     - **`Ctrl + Alt + D`**: Toggle Light / Dark Mode system-wide.
-    - **`Ctrl + Alt + W`**: Cycle through wallpaper styles instantly.
-- **macOS Desktop Context Menu:** Right-click anywhere on the desktop to open the macOS context menu with *New Folder*, *Get Info*, *Change Wallpaper*, *Appearance*, *Stage Manager*, and *Show/Hide Taskbar*.
+    - **`Ctrl + Alt + W`**: Cycle through wallpaper styles instantly with live on-screen notification feedback.
+- **macOS Desktop Context Menu:** Right-click anywhere on the desktop to open the macOS context menu with *New Folder*, *Get Info*, *Change Wallpaper (Sonoma, Sequoia, Ventura, Monterey, Big Sur)*, *Appearance*, and *Show/Hide Taskbar*.
 
 ### 12. macOS Sonoma Lock Screen & Screensaver (`LockScreen`)
 - **Authentic macOS Lock Experience:** Fullscreen Sonoma atmospheric aerial motion background with subtle glowing nebula drift.
@@ -191,6 +198,18 @@ It replicates the fluid macOS desktop environment (Top Menu Bar, Parabolic Magni
 - **Work Area Reflow:** Adjusts the Windows desktop work area (`SPI_SETWORKAREA`) so maximized application windows seamlessly snap below the 32px TopBar.
 - **Toggle Anytime:** Press **`Ctrl + Alt + T`** or select **"Show/Hide Windows Taskbar"** from the Apple logo menu to toggle the Windows taskbar on or off on demand.
 - **Fail-Safe Restoration:** Restores the default Windows taskbar and desktop work area cleanly on exit.
+
+### 14. macOS Notification Banners & Windows Toast Listener (`NotificationBanner` & `NotificationService`)
+- **Top-Right Floating Banners:** Sleek macOS Sequoia rounded frosted glass cards (16px corner radius, specular top highlight) sliding in from the top-right corner.
+- **60 FPS Spring Animation:** Smooth cubic ease-out slide-in animation; pauses auto-dismiss on mouse hover.
+- **Card Hierarchy:** App icon (36x36), app title with relative timestamp (`App • now`), bold notification headline, and regular body text.
+- **Windows Toast Listener Integration:** Connects to Windows `UserNotificationListener` (WinRT) to intercept and display real Windows app notifications (Slack, Teams, Chrome, Outlook, System) in authentic macOS banner styling.
+- **Interactive Controls:** Hovering reveals a circular close button (`×`); clicking dismisses the banner; auto-dismisses after 5 seconds of inactivity.
+
+### 15. Automated CI/CD & Standalone Installer (`setup.exe` & Release Pipeline)
+- **Inno Setup Standalone Installer:** `installer/AquaOS.iss` generates a polished `AquaOS-Setup.exe` with desktop shortcut, Start menu integration, Windows startup auto-launch option, and fail-safe taskbar restoration on uninstall.
+- **Automated Packaging Script:** `scripts/package.bat` automates assembling the distribution folder, generating portable zip archives (`dist/AquaOS-v2.0.0-windows-x64.zip`), and compiling the setup installer.
+- **GitHub Actions Release Pipeline:** `.github/workflows/build-and-release.yml` triggers automated multi-step MSVC compilation, Inno Setup building, and GitHub Releases asset publishing upon tag pushes.
 
 ---
 
@@ -219,6 +238,9 @@ It replicates the fluid macOS desktop environment (Top Menu Bar, Parabolic Magni
 
 ```
 operating-system/
+├── .github/                      # CI/CD Workflows
+│   └── workflows/
+│       └── build-and-release.yml # Automated CMake + Inno Setup build & release pipeline
 ├── CMakeLists.txt                # Enterprise CMake with modular targets & source groups
 ├── .clang-format                 # Microsoft/Chromium standard C++ formatting rules
 ├── README.md                     # Architectural documentation & guides
@@ -228,38 +250,47 @@ operating-system/
 │   └── resources.rc              # Windows version information & embedded manifest
 ├── docs/                         # Architecture specifications & diagrams
 │   └── ARCHITECTURE.md           # Subsystem overview & rendering pipeline
+├── installer/                    # Inno Setup installation scripts
+│   └── AquaOS.iss                # Standalone AquaOS-Setup.exe installer configuration
 ├── scripts/                      # Build, launch, and diagnostic scripts
 │   ├── build.bat                 # Multi-config MSVC CMake build script
 │   ├── run.bat                   # Shell launcher
-│   └── restore.bat               # Standalone taskbar restoration
+│   ├── package.bat               # Release packager (ZIP & Inno Setup compiler)
+│   ├── restore.bat               # Standalone taskbar restoration
+│   └── restore.ps1               # PowerShell emergency recovery
 ├── include/                      # Public modular headers
 │   ├── Common.h                  # Base types, macros, COM smart pointers, DPI math
 │   ├── core/                     # Graphics engine & theme management
 │   │   ├── DCompRenderer.h       # DirectComposition & Direct2D surface engine
-│   │   └── ThemeManager.h        # Theme palette, brushes, colors
+│   │   └── ThemeManager.h        # 4-phase dynamic wallpaper engine & theme palette
 │   ├── platform/                 # Windows OS integration services
 │   │   ├── SystemInfo.h          # MonitorManager, battery, RAM, CPU queries
 │   │   ├── IconManager.h         # Live HWND & JUMBO icon extraction
+│   │   ├── HardwareController.h  # Physical display brightness & radio control
 │   │   └── TaskbarController.h   # Taskbar suppression & restoration
 │   ├── ui/                       # macOS Shell UI Surfaces
 │   │   ├── Dock.h                # Interactive magnified Dock & running apps
 │   │   ├── TopBar.h              # Menu bar with system status & menus
 │   │   ├── ControlCenter.h       # Quick toggles (Wi-Fi, BT, Brightness, Sound)
 │   │   ├── NotificationCenter.h  # Notification flyout & calendar
+│   │   ├── NotificationBanner.h  # Top-right sliding frosted acrylic alert banners
 │   │   ├── Launchpad.h           # Fullscreen app grid
 │   │   ├── Spotlight.h           # Global search & app launcher
-│   │   ├── MissionControl.h      # Window exposer & virtual workspaces
+│   │   ├── MissionControl.h      # Window exposer & Spaces Bar (virtual desktops)
 │   │   └── LockScreen.h          # macOS-style lock & screensaver
 │   └── services/                 # Shell window & workspace management
 │       ├── WindowTiler.h         # macOS Sequoia snap tiling & keyboard snap
 │       ├── StageManager.h        # Stage Manager recent app strip
-│       └── QuickLook.h           # Spacebar quick previewer
+│       ├── QuickLook.h           # Spacebar quick previewer
+│       ├── AppCatalogService.h   # Asynchronous Start menu & app indexer
+│       ├── MediaControllerService.h # WinRT media transport & album art
+│       └── NotificationService.h # Windows Toast listener & notification dispatcher
 └── src/                          # Modular implementations
     ├── main.cpp                  # WinMain entry point & shell orchestrator
     ├── core/                     # DCompRenderer.cpp, ThemeManager.cpp
-    ├── platform/                 # IconManager.cpp, TaskbarController.cpp
-    ├── ui/                       # Dock.cpp, TopBar.cpp, ControlCenter.cpp, ...
-    └── services/                 # WindowTiler.cpp, StageManager.cpp, QuickLook.cpp
+    ├── platform/                 # IconManager.cpp, TaskbarController.cpp, HardwareController.cpp
+    ├── ui/                       # Dock.cpp, TopBar.cpp, NotificationBanner.cpp, MissionControl.cpp, ...
+    └── services/                 # WindowTiler.cpp, NotificationService.cpp, StageManager.cpp, ...
 ```
 
 ---
@@ -271,17 +302,25 @@ operating-system/
 - Visual Studio 2022 (MSVC v143 toolset) or VS Build Tools.
 - Windows 10/11 SDK.
 - CMake 3.20+.
+- Inno Setup 6 (optional, for compiling standalone setup installer).
 
 ### Build
 Run `build.bat` from PowerShell or Command Prompt:
 ```cmd
-build.bat
+.\scripts\build.bat Release
 ```
 The compiled binary will be placed at `build\Release\AquaShell.exe`.
+
+### Package Release & Installer
+Run `scripts\package.bat` to create distribution packages:
+```cmd
+.\scripts\package.bat
+```
+Generates portable distribution and standalone zip in `dist\AquaOS-v2.0.0-windows-x64.zip`. If Inno Setup is installed, also compiles `dist\AquaOS-v2.0.0-Setup.exe`.
 
 ### Run
 Launch `run.bat` or run the executable directly:
 ```cmd
-run.bat
+.\scripts\run.bat
 ```
 

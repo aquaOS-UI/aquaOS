@@ -904,6 +904,7 @@ namespace Aqua {
                 if (TaskbarController::Instance().IsSuppressed()) {
                     TaskbarController::Instance().SuppressTaskbar();
                 }
+                ThemeManager::Instance().UpdateDynamicWallpaper(false);
             }
             SyncForegroundApp();
             Render();
@@ -981,7 +982,8 @@ namespace Aqua {
                 AppendMenuW(hMenu, MF_STRING, 2002, L"System Settings...");
                 AppendMenuW(hMenu, MF_STRING, 2003, L"Task Manager (Activity Monitor)");
                 AppendMenuW(hMenu, MF_SEPARATOR, 0, nullptr);
-                AppendMenuW(hMenu, MF_STRING, 2021, L"Dynamic Wallpaper Style\tCtrl+Alt+W");
+                std::wstring wallLabel = L"Wallpaper: " + std::wstring(ThemeManager::Instance().GetWallpaperStyleName()) + L"\tCtrl+Alt+W";
+                AppendMenuW(hMenu, MF_STRING, 2021, wallLabel.c_str());
                 AppendMenuW(hMenu, MF_STRING, 2022, L"Toggle Dark / Light Theme\tCtrl+Alt+D");
                 AppendMenuW(hMenu, MF_STRING, 2023, L"Stage Manager\tCtrl+Alt+S");
                 AppendMenuW(hMenu, MF_STRING, 2024, L"Mission Control\tF3");

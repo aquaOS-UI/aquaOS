@@ -14,11 +14,19 @@ namespace Aqua {
         Light
     };
 
+    enum class TimePhase {
+        Dawn,
+        Day,
+        Sunset,
+        Night
+    };
+
     enum class WallpaperStyle {
         Sonoma,
         Sequoia,
         Ventura,
-        Monterey
+        Monterey,
+        BigSur
     };
 
     class ThemeManager {
@@ -37,6 +45,8 @@ namespace Aqua {
         // Wallpaper Control
         void SetWallpaperStyle(WallpaperStyle style);
         WallpaperStyle GetWallpaperStyle() const { return m_style; }
+        const wchar_t* GetWallpaperStyleName() const;
+        TimePhase GetCurrentTimePhase() const;
         void CycleWallpaper();
         void UpdateDynamicWallpaper(bool force = false);
 
@@ -64,7 +74,7 @@ namespace Aqua {
         static LRESULT CALLBACK LowLevelMouseProc(int nCode, WPARAM wParam, LPARAM lParam);
 
         void NotifyListeners();
-        bool GenerateWallpaperImage(const std::wstring& outPath, WallpaperStyle style, bool isDark);
+        bool GenerateWallpaperImage(const std::wstring& outPath, WallpaperStyle style, TimePhase phase);
 
         HINSTANCE m_hInstance = nullptr;
         int m_screenWidth = 1920;
@@ -80,6 +90,7 @@ namespace Aqua {
         ComPtr<IWICImagingFactory> m_wicFactory;
 
         int m_lastHour = -1;
+        TimePhase m_lastPhase = static_cast<TimePhase>(-1);
     };
 
 }
