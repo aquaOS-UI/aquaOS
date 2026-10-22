@@ -64,3 +64,4 @@ AquaOS is architected with several defensive design measures:
 
 4. **Exception-Guarded WinRT Integrations:**
    - All asynchronous WinRT interactions (media controls, toast listeners, hardware queries) are isolated in dedicated worker threads and wrapped in exception boundaries to prevent host process termination.
+

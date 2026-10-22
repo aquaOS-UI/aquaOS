@@ -113,3 +113,4 @@ We are thrilled to announce the initial release of **AquaOS v0.0.1**, an ultra-f
 - **Portable ZIP:** `AquaOS-v0.0.1-windows-x64.zip`
 - **Standalone Installer:** `AquaOS-v0.0.1-Setup.exe`
 - **Supported OS:** Windows 10 (Build 19041+) / Windows 11 (64-bit)
+

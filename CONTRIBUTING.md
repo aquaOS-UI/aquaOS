@@ -156,3 +156,4 @@ fix(dock): resolve focus stealing during minimize toggle
    - Any relevant screenshots or GIFs for UI modifications.
 
 Thank you for helping make AquaOS the fastest and most elegant macOS desktop layer for Windows!
+

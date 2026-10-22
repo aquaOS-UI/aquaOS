@@ -8,7 +8,17 @@ echo ========================================================
 set "PROJECT_ROOT=%~dp0.."
 cd /d "%PROJECT_ROOT%"
 
-set "VERSION=2.0.0"
+set "VERSION=0.0.1"
+if not "%~1"=="" (
+    set "VERSION=%~1"
+) else if defined AQUAOS_VERSION (
+    set "VERSION=%AQUAOS_VERSION%"
+)
+
+:: Strip leading 'v' or 'V' if present (e.g. v0.0.1 -> 0.0.1)
+if "!VERSION:~0,1!"=="v" set "VERSION=!VERSION:~1!"
+if "!VERSION:~0,1!"=="V" set "VERSION=!VERSION:~1!"
+
 set "DIST_DIR=%PROJECT_ROOT%\dist"
 set "STAGE_DIR=%DIST_DIR%\AquaOS"
 set "ZIP_NAME=AquaOS-v%VERSION%-windows-x64.zip"
@@ -68,10 +78,10 @@ if not defined ISCC_PATH (
 )
 
 if defined ISCC_PATH (
-    echo Compiling installer with Inno Setup...
-    "!ISCC_PATH!" "installer\AquaOS.iss"
+    echo Compiling installer with Inno Setup for version !VERSION!...
+    "!ISCC_PATH!" /DMyAppVersion="!VERSION!" "installer\AquaOS.iss"
     if not errorlevel 1 (
-        echo [OK] Installer built successfully: dist\AquaOS-v%VERSION%-Setup.exe
+        echo [OK] Installer built successfully: dist\AquaOS-v!VERSION!-Setup.exe
     ) else (
         echo [WARNING] Inno Setup compilation returned an error.
     )

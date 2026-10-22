@@ -2,7 +2,9 @@
 ; Generates standalone Setup.exe for AquaOS Enterprise Desktop Shell
 
 #define MyAppName "AquaOS"
-#define MyAppVersion "2.0.0"
+#ifndef MyAppVersion
+  #define MyAppVersion "0.0.1"
+#endif
 #define MyAppPublisher "AquaOS Team"
 #define MyAppURL "https://github.com/AquaOS/AquaOS"
 #define MyAppExeName "AquaShell.exe"
